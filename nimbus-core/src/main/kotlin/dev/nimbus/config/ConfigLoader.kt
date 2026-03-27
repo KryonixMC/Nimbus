@@ -94,6 +94,25 @@ object ConfigLoader {
                 "max_restarts must be >= 0 in group '${group.name}' ($source)"
             )
         }
+        // Validate memory format (e.g. "512M", "1G", "2048M")
+        val memoryPattern = Regex("^\\d+[MmGg]$")
+        if (!memoryPattern.matches(group.resources.memory)) {
+            throw ConfigException(
+                "Invalid memory format '${group.resources.memory}' in group '${group.name}' ($source) — expected format like '512M' or '2G'"
+            )
+        }
+        // Validate version format
+        if (!group.version.matches(Regex("^\\d+\\.\\d+(\\.\\d+)?(-.*)?$"))) {
+            throw ConfigException(
+                "Invalid version format '${group.version}' in group '${group.name}' ($source) — expected format like '1.21.4' or '1.8.8'"
+            )
+        }
+        // Validate template name is not blank
+        if (group.template.isBlank()) {
+            throw ConfigException(
+                "Template name must not be blank in group '${group.name}' ($source)"
+            )
+        }
     }
 }
 

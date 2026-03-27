@@ -36,19 +36,72 @@ class ConfigPatcher {
         file.writeLines(patched)
     }
 
-    fun patchVelocityConfig(workDir: Path, port: Int) {
+    fun patchVelocityConfig(workDir: Path, port: Int, forwardingMode: String = "modern") {
         val file = workDir.resolve("velocity.toml")
         if (!file.exists()) return
 
         val patched = file.readLines().map { line ->
             when {
                 line.trimStart().startsWith("bind") && !line.contains("bungee") -> "bind = \"0.0.0.0:$port\""
-                line.trimStart().startsWith("player-info-forwarding-mode") -> "player-info-forwarding-mode = \"modern\""
+                line.trimStart().startsWith("player-info-forwarding-mode") -> "player-info-forwarding-mode = \"$forwardingMode\""
                 line.trimStart().startsWith("online-mode") && !line.contains("#") -> "online-mode = true"
                 else -> line
             }
         }
         file.writeLines(patched)
+        logger.info("Velocity forwarding mode set to '{}'", forwardingMode)
+    }
+
+    /**
+     * Configures a backend server for BungeeCord/legacy forwarding via spigot.yml.
+     * Works for ALL server versions (1.8.8+), used when pre-1.13 servers are in the network.
+     */
+    fun patchSpigotForBungeeCord(workDir: Path) {
+        val file = workDir.resolve("spigot.yml")
+        if (file.exists()) {
+            val lines = file.readLines().toMutableList()
+            var inSettings = false
+            var foundBungeecord = false
+
+            for (i in lines.indices) {
+                val trimmed = lines[i].trim()
+                if (trimmed == "settings:" || trimmed.startsWith("settings:")) {
+                    inSettings = true
+                    continue
+                }
+                if (inSettings) {
+                    val currentIndent = lines[i].length - lines[i].trimStart().length
+                    if (trimmed.isNotEmpty() && currentIndent == 0 && !trimmed.startsWith("#")) {
+                        inSettings = false
+                        continue
+                    }
+                    if (trimmed.startsWith("bungeecord:")) {
+                        lines[i] = lines[i].replaceAfter("bungeecord:", " true")
+                        foundBungeecord = true
+                    }
+                }
+            }
+
+            if (!foundBungeecord) {
+                // Append to settings section or create it
+                val settingsIdx = lines.indexOfFirst { it.trim() == "settings:" || it.trim().startsWith("settings:") }
+                if (settingsIdx >= 0) {
+                    lines.add(settingsIdx + 1, "  bungeecord: true")
+                } else {
+                    lines.add("settings:")
+                    lines.add("  bungeecord: true")
+                }
+            }
+
+            file.writeLines(lines)
+        } else {
+            // Create minimal spigot.yml
+            file.writeText(buildString {
+                appendLine("settings:")
+                appendLine("  bungeecord: true")
+            })
+        }
+        logger.debug("Patched spigot.yml for BungeeCord forwarding at {}", workDir)
     }
 
     /**

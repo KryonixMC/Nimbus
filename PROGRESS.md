@@ -207,9 +207,42 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 
 ### Architecture Decisions
 - **Via plugins on backend only**: ViaVersion on Velocity proxy causes UUID parsing crashes with modern forwarding. Backend servers handle protocol translation themselves.
-- **Velocity always modern forwarding + online-mode**: Proxy authenticates with Mojang, backend servers trust the proxy via forwarding secret.
-- **Pre-1.13 servers**: No Velocity forwarding config (unsupported), `online-mode=false` only. Via on the backend handles protocol translation.
+- **Adaptive forwarding mode**: If ALL backend groups are 1.13+, Velocity uses `modern` forwarding (shared secret, secure). If ANY group is pre-1.13, Velocity switches to `legacy` (BungeeCord) forwarding and all backends get `spigot.yml` `bungeecord: true`.
 - **Port separation**: Proxy on 25565 (standard MC port), all backend servers on 30000+ (hidden from direct access).
+
+---
+
+## Phase 5: Polish & Release Prep
+> Goal: Error handling, logging, shutdown ordering, signal handling.
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Fix: Pre-1.13 servers (1.8.8) auto-switch to legacy BungeeCord forwarding | done |
+| 2 | Graceful shutdown ordering (game servers → lobbies → proxies) | done |
+| 3 | Comprehensive config validation (memory format, version format, template name) | done |
+| 4 | Port allocation range limit with clear error on exhaustion | done |
+| 5 | Fatal config error handling on startup (don't crash, show fix instructions) | done |
+| 6 | Logback: SizeAndTime rolling policy, 100MB total cap, 14 days retention | done |
+| 7 | Shutdown hook: error-safe, ordered, with logging | done |
+
+### Key Changes (Phase 5)
+- `ConfigPatcher.kt` — `patchVelocityConfig()` accepts forwarding mode, new `patchSpigotForBungeeCord()` for legacy forwarding
+- `ServiceManager.kt` — `determineForwardingMode()` auto-detects modern vs legacy, improved `stopAll()` with game→lobby→proxy ordering
+- `ConfigLoader.kt` — validates memory format, version format, template name
+- `PortAllocator.kt` — range limit (30000-39999) with `IllegalStateException` on exhaustion
+- `Nimbus.kt` — try/catch on config loading, error-safe shutdown hook
+- `logback.xml` — SizeAndTimeBasedRollingPolicy, 10MB per file, 100MB total cap, 14 days history
+
+---
+
+## Phase 6: Documentation & Release
+> Goal: README, example configs, license — ready for v0.1.0 public release.
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | README.md with getting started guide, config reference, command list | done |
+| 2 | Example configs: Proxy, Lobby, BedWars, SkyBlock (in `examples/`) | done |
+| 3 | MIT License | done |
 
 ---
 

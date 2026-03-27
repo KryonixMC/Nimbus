@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.seconds
 
@@ -42,6 +43,19 @@ class ServiceManager(
     private val configPatcher = ConfigPatcher()
     private val velocityConfigGen = VelocityConfigGen(registry, groupManager)
     private val softwareResolver = SoftwareResolver()
+
+    /**
+     * Determines forwarding mode based on all configured groups.
+     * If ANY backend group uses a version < 1.13, legacy (BungeeCord) forwarding is required.
+     * Otherwise, modern (Velocity) forwarding is used for better security.
+     */
+    fun determineForwardingMode(): String {
+        val hasLegacyServer = groupManager.getAllGroups().any { group ->
+            group.config.group.software != ServerSoftware.VELOCITY &&
+                (group.config.group.version.split(".").getOrNull(1)?.toIntOrNull() ?: 99) < 13
+        }
+        return if (hasLegacyServer) "legacy" else "modern"
+    }
 
     suspend fun startService(groupName: String): Service? {
         val group = groupManager.getGroup(groupName)
@@ -107,6 +121,11 @@ class ServiceManager(
             initializeVelocityTemplate(templateDir, jarName)
         }
 
+        // Auto-deploy Nimbus Hub plugin to Velocity proxy template
+        if (software == ServerSoftware.VELOCITY) {
+            deployHubPlugin(templateDir)
+        }
+
         registry.register(service)
         eventBus.emit(NimbusEvent.ServiceStarting(serviceName, groupName, port))
         logger.info("Starting service '{}' on port {}", serviceName, port)
@@ -119,17 +138,22 @@ class ServiceManager(
                 runningDir = runningDir
             )
 
+            val forwardingMode = determineForwardingMode()
             when (software) {
-                ServerSoftware.VELOCITY -> configPatcher.patchVelocityConfig(workDir, port)
+                ServerSoftware.VELOCITY -> configPatcher.patchVelocityConfig(workDir, port, forwardingMode)
                 else -> {
                     configPatcher.patchServerProperties(workDir, port)
-                    // Configure Paper/Purpur for Velocity modern forwarding (1.13+ only)
-                    val minor = group.config.group.version.split(".").getOrNull(1)?.toIntOrNull() ?: 99
-                    if (minor >= 13) {
-                        val velocityTemplateDir = templatesDir.resolve("proxy")
-                        if (velocityTemplateDir.resolve("forwarding.secret").exists()) {
+                    val velocityTemplateDir = templatesDir.resolve("proxy")
+                    if (forwardingMode == "modern") {
+                        // Modern forwarding: patch paper-global.yml with Velocity secret (1.13+ only)
+                        val minor = group.config.group.version.split(".").getOrNull(1)?.toIntOrNull() ?: 99
+                        if (minor >= 13 && velocityTemplateDir.resolve("forwarding.secret").exists()) {
                             configPatcher.patchPaperForVelocity(workDir, velocityTemplateDir)
                         }
+                    } else {
+                        // Legacy forwarding: patch spigot.yml with bungeecord: true (works for ALL versions)
+                        configPatcher.patchSpigotForBungeeCord(workDir)
+                        logger.info("Using legacy (BungeeCord) forwarding for '{}' (pre-1.13 servers detected)", serviceName)
                     }
                 }
             }
@@ -310,27 +334,46 @@ class ServiceManager(
     }
 
     suspend fun stopAll() {
-        logger.info("Stopping all services")
+        logger.info("Stopping all services (ordered: game → lobby → proxy)")
         val allServices = registry.getAll()
 
-        // Stop game servers first, then lobbies, then proxies
-        val gameServers = allServices.filter {
+        // Categorize services: game servers (stopOnEmpty=true), lobbies (stopOnEmpty=false), proxies
+        val proxies = allServices.filter {
+            val group = groupManager.getGroup(it.groupName)
+            group?.config?.group?.software == ServerSoftware.VELOCITY
+        }
+        val backends = allServices.filter {
             val group = groupManager.getGroup(it.groupName)
             group != null && group.config.group.software != ServerSoftware.VELOCITY
         }
-        val proxies = allServices.filter {
+        val gameServers = backends.filter {
             val group = groupManager.getGroup(it.groupName)
-            group != null && group.config.group.software == ServerSoftware.VELOCITY
+            group?.config?.group?.lifecycle?.stopOnEmpty == true
+        }
+        val lobbies = backends.filter {
+            val group = groupManager.getGroup(it.groupName)
+            group?.config?.group?.lifecycle?.stopOnEmpty != true
         }
 
-        logger.info("Stopping {} game server(s)", gameServers.size)
-        for (service in gameServers) {
-            stopService(service.name)
+        if (gameServers.isNotEmpty()) {
+            logger.info("Stopping {} game server(s)...", gameServers.size)
+            for (service in gameServers) {
+                stopService(service.name)
+            }
         }
 
-        logger.info("Stopping {} proxy/proxies", proxies.size)
-        for (service in proxies) {
-            stopService(service.name)
+        if (lobbies.isNotEmpty()) {
+            logger.info("Stopping {} lobby/lobbies...", lobbies.size)
+            for (service in lobbies) {
+                stopService(service.name)
+            }
+        }
+
+        if (proxies.isNotEmpty()) {
+            logger.info("Stopping {} proxy/proxies...", proxies.size)
+            for (service in proxies) {
+                stopService(service.name)
+            }
         }
 
         logger.info("All services stopped")
@@ -394,12 +437,59 @@ class ServiceManager(
 
             if (templateDir.resolve("velocity.toml").exists()) {
                 logger.info("Velocity template initialized successfully")
+                // Remove Velocity's default server entries (lobby, factions, minigames, etc.)
+                // Nimbus manages the [servers] section dynamically via VelocityConfigGen
+                cleanDefaultVelocityServers(templateDir)
             } else {
                 logger.warn("Velocity config was not generated — proxy may fail to start")
             }
         } catch (e: Exception) {
             logger.error("Failed to initialize Velocity template: {}", e.message, e)
         }
+    }
+
+    /**
+     * Removes Velocity's default server entries from velocity.toml.
+     * Velocity generates default servers (lobby, factions, minigames) on first run.
+     * Nimbus manages servers dynamically — these defaults cause ghost entries and confuse the hub plugin.
+     */
+    private fun cleanDefaultVelocityServers(templateDir: Path) {
+        val configFile = templateDir.resolve("velocity.toml")
+        if (!configFile.exists()) return
+
+        val content = configFile.readText()
+
+        // Replace [servers] with an empty section (Nimbus fills this at runtime)
+        val cleanServers = "[servers]\ntry = []\n"
+        val cleanForcedHosts = "[forced-hosts]\n"
+
+        var result = velocityConfigGen.replaceTOMLSection(content, "servers", cleanServers)
+        result = velocityConfigGen.replaceTOMLSection(result, "forced-hosts", cleanForcedHosts)
+
+        configFile.writeText(result)
+        logger.info("Cleaned default server entries from Velocity template")
+    }
+
+    /**
+     * Extracts the embedded Nimbus Hub plugin (nimbus-hub.jar) to the Velocity template's plugins/ dir.
+     * Provides /hub, /lobby, /l commands for players.
+     */
+    private fun deployHubPlugin(templateDir: Path) {
+        val pluginsDir = templateDir.resolve("plugins")
+        val targetFile = pluginsDir.resolve("nimbus-hub.jar")
+        if (targetFile.exists()) return // Already deployed
+
+        val resource = javaClass.classLoader.getResourceAsStream("plugins/nimbus-hub.jar")
+        if (resource == null) {
+            logger.debug("Nimbus Hub plugin not found in resources, skipping auto-deploy")
+            return
+        }
+
+        if (!pluginsDir.exists()) pluginsDir.createDirectories()
+        resource.use { input ->
+            java.nio.file.Files.copy(input, targetFile)
+        }
+        logger.info("Deployed Nimbus Hub plugin to {}", targetFile)
     }
 
     private fun cleanupWorkingDirectory(workDir: Path) {

@@ -31,9 +31,22 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:3.1.1")
 }
 
+// Embed the Velocity hub plugin JAR as a resource so Nimbus can auto-deploy it
+val pluginJar = tasks.register("copyPluginJar", Copy::class) {
+    dependsOn(project(":nimbus-velocity-plugin").tasks.named("jar"))
+    from(project(":nimbus-velocity-plugin").tasks.named("jar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-hub.jar" }
+}
+
+tasks.processResources {
+    dependsOn(pluginJar)
+}
+
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
+    dependsOn(pluginJar)
 }
 
 kotlin {

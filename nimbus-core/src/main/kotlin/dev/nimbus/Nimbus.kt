@@ -36,11 +36,17 @@ fun main() = runBlocking {
 
     // Load main config
     val configPath = baseDir.resolve("nimbus.toml")
-    val config = if (configPath.exists()) {
-        ConfigLoader.loadNimbusConfig(configPath)
-    } else {
-        logger.warn("nimbus.toml not found, using defaults")
-        NimbusConfig()
+    val config = try {
+        if (configPath.exists()) {
+            ConfigLoader.loadNimbusConfig(configPath)
+        } else {
+            logger.warn("nimbus.toml not found, using defaults")
+            NimbusConfig()
+        }
+    } catch (e: Exception) {
+        logger.error("Fatal: Failed to load nimbus.toml — {}", e.message)
+        logger.error("Fix the config file and restart Nimbus.")
+        return@runBlocking
     }
 
     // Ensure directories exist
@@ -62,6 +68,9 @@ fun main() = runBlocking {
 
     // Load group configs
     val groupConfigs = ConfigLoader.loadGroupConfigs(groupsDir)
+    if (groupConfigs.isEmpty()) {
+        logger.warn("No valid group configs found in {}/ — nothing to start", groupsDir)
+    }
     groupManager.loadGroups(groupConfigs)
 
     logger.info("Found ${groupConfigs.size} groups: ${groupConfigs.joinToString { it.group.name }}")
@@ -89,13 +98,18 @@ fun main() = runBlocking {
     val scalingJob = scalingEngine.start()
     logger.info("Scaling engine started (interval: {}ms)", config.controller.heartbeatInterval)
 
-    // Register shutdown hook
+    // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)
     Runtime.getRuntime().addShutdownHook(Thread {
         runBlocking {
             logger.info("Shutdown signal received, stopping all services...")
             scalingJob.cancel()
-            serviceManager.stopAll()
+            try {
+                serviceManager.stopAll()
+            } catch (e: Exception) {
+                logger.error("Error during shutdown: {}", e.message)
+            }
             scope.cancel()
+            logger.info("Nimbus stopped.")
         }
     })
 

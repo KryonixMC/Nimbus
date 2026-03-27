@@ -68,7 +68,7 @@ class VelocityConfigGen(
     /**
      * Replaces a TOML section [name] and its contents up to the next [section] header.
      */
-    private fun replaceTOMLSection(content: String, sectionName: String, replacement: String): String {
+    fun replaceTOMLSection(content: String, sectionName: String, replacement: String): String {
         val lines = content.lines().toMutableList()
         val sectionHeader = "[$sectionName]"
 

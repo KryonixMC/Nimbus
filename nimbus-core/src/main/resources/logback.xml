@@ -2,14 +2,20 @@
 <configuration>
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>logs/nimbus.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/nimbus.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>7</maxHistory>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/nimbus.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{HH:mm:ss} %-5level [%logger{20}] %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{20}] %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- Suppress noisy libraries -->
+    <logger name="io.ktor" level="WARN" />
+    <logger name="io.netty" level="WARN" />
 
     <root level="INFO">
         <appender-ref ref="FILE" />

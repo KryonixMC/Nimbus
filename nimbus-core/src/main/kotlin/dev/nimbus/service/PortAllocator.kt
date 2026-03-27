@@ -25,12 +25,17 @@ class PortAllocator(
 
     /**
      * Allocates a backend port from the high range (30000+).
+     * @throws IllegalStateException if no port is available in range 30000-39999
      */
     fun allocateBackendPort(): Int {
+        val maxPort = backendBasePort + 9999
         var port = backendBasePort
         synchronized(allocatedPorts) {
             while (allocatedPorts.contains(port) || !isPortAvailable(port)) {
                 port++
+                if (port > maxPort) {
+                    throw IllegalStateException("No available backend ports in range $backendBasePort-$maxPort")
+                }
             }
             allocatedPorts.add(port)
         }
