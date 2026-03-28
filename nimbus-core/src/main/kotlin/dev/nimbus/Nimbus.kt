@@ -21,10 +21,13 @@ import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 
-private val logger = LoggerFactory.getLogger("Nimbus")
+private val logger by lazy { LoggerFactory.getLogger("Nimbus") }
 
 fun main() = runBlocking {
     val baseDir = Path("").toAbsolutePath()
+
+    // Rotate latest.log → YYYY-MM-DD-N.log.gz (Minecraft-style)
+    LogRotation.rotate(baseDir.resolve("logs"))
     val groupsDir = baseDir.resolve("groups")
 
     // Run setup wizard if this is a fresh install
