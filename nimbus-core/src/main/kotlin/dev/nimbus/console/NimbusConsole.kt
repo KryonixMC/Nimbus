@@ -41,6 +41,8 @@ class NimbusConsole(
     private lateinit var terminal: Terminal
     private lateinit var lineReader: LineReader
     private var eventListenerJob: Job? = null
+    @Volatile var eventsPaused: Boolean = false
+    private val eventBuffer = mutableListOf<String>()
 
     private fun setupTerminal() {
         terminal = TerminalBuilder.builder()
@@ -88,7 +90,8 @@ class NimbusConsole(
         }
         if (groupsDir != null && softwareResolver != null) {
             val templatesDir = java.nio.file.Path.of(config.paths.templates)
-            dispatcher.register(CreateGroupCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir))
+            dispatcher.register(CreateGroupCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
+            dispatcher.register(ImportCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
         }
         if (api != null) {
             dispatcher.register(ApiCommand(api))
@@ -105,8 +108,11 @@ class NimbusConsole(
         eventListenerJob = scope.launch {
             eventBus.subscribe().collect { event ->
                 val formatted = ConsoleFormatter.formatEvent(event)
-                // Print above the current input line
-                lineReader.printAbove(formatted)
+                if (eventsPaused) {
+                    synchronized(eventBuffer) { eventBuffer.add(formatted) }
+                } else {
+                    lineReader.printAbove(formatted)
+                }
             }
         }
     }
@@ -153,6 +159,23 @@ class NimbusConsole(
             w.println()
         }
         w.flush()
+    }
+
+    /**
+     * Flushes buffered events that were collected while events were paused.
+     * Call this after a wizard finishes to show what happened in the background.
+     */
+    fun flushBufferedEvents() {
+        val buffered: List<String>
+        synchronized(eventBuffer) {
+            buffered = eventBuffer.toList()
+            eventBuffer.clear()
+        }
+        if (buffered.isNotEmpty()) {
+            for (event in buffered) {
+                lineReader.printAbove(event)
+            }
+        }
     }
 
     /**

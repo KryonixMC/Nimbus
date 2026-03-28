@@ -10,6 +10,7 @@ import dev.nimbus.console.ConsoleFormatter.GREEN
 import dev.nimbus.console.ConsoleFormatter.RED
 import dev.nimbus.console.ConsoleFormatter.RESET
 import dev.nimbus.console.ConsoleFormatter.YELLOW
+import dev.nimbus.console.NimbusConsole
 import dev.nimbus.group.GroupManager
 import dev.nimbus.service.ServiceManager
 import dev.nimbus.template.SoftwareResolver
@@ -29,7 +30,8 @@ class CreateGroupCommand(
     private val serviceManager: ServiceManager,
     private val softwareResolver: SoftwareResolver,
     private val groupsDir: Path,
-    private val templatesDir: Path
+    private val templatesDir: Path,
+    private val console: NimbusConsole
 ) : Command {
 
     override val name = "create"
@@ -37,22 +39,37 @@ class CreateGroupCommand(
     override val usage = "create"
 
     override suspend fun execute(args: List<String>) {
+        // Enter wizard mode: clear screen, pause events
+        console.eventsPaused = true
         val w = terminal.writer()
+        w.print("\u001B[2J\u001B[H")
+        w.flush()
+
         try {
-            w.println()
-            w.println("  ${BOLD}Create New Group$RESET")
+            w.println("${BOLD}Create New Group$RESET")
             w.println()
 
             // Step 1: Group name
-            val groupName = promptGroupName(w)
-            if (groupName == null) return
+            val groupName = promptGroupName(w) ?: return
 
             // Step 2: Software
             val software = promptSoftware(w)
 
+            // Modpack → hand off to import wizard
+            if (software == null) {
+                val importCmd = ImportCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, console)
+                val source = prompt("Modrinth URL or slug", "")
+                if (source.isBlank()) {
+                    w.println("${DIM}Cancelled.$RESET")
+                    return
+                }
+                w.println()
+                importCmd.runImport(w, source)
+                return
+            }
+
             // Step 3: Version
-            w.println()
-            w.print("  ${DIM}Fetching available versions...$RESET")
+            w.print("${DIM}Fetching available versions...$RESET")
             w.flush()
             val versions = when (software) {
                 ServerSoftware.PAPER -> softwareResolver.fetchPaperVersions()
@@ -71,23 +88,23 @@ class CreateGroupCommand(
 
             if (stableVersions.isNotEmpty()) {
                 val display = stableVersions.take(15).joinToString("  ")
-                w.println("  ${DIM}Stable: $display$RESET")
+                w.println("${DIM}Stable: $display$RESET")
                 if (stableVersions.size > 15) {
-                    w.println("  ${DIM}        ... and ${stableVersions.size - 15} more (tab for all)$RESET")
+                    w.println("${DIM}... and ${stableVersions.size - 15} more (tab for all)$RESET")
                 }
             }
             if (snapshotVersions.isNotEmpty()) {
                 val display = snapshotVersions.take(5).joinToString("  ")
-                w.println("  ${YELLOW}Nightly: $display$RESET")
+                w.println("${YELLOW}Nightly: $display$RESET")
             }
 
             val allCandidates = stableVersions + snapshotVersions
-            val version = prompt("  Minecraft version", defaultVersion, candidates = allCandidates)
+            val version = prompt("Minecraft version", defaultVersion, candidates = allCandidates)
 
-            // Step 3b: Modloader version (for Forge/NeoForge/Fabric)
+            // Step 3b: Modloader version
             var modloaderVersion = ""
             if (software in listOf(ServerSoftware.FORGE, ServerSoftware.NEOFORGE, ServerSoftware.FABRIC)) {
-                w.print("  ${DIM}Fetching modloader versions...$RESET")
+                w.print("${DIM}Fetching modloader versions...$RESET")
                 w.flush()
                 val loaderVersions = when (software) {
                     ServerSoftware.FORGE -> softwareResolver.fetchForgeVersions(version)
@@ -100,33 +117,29 @@ class CreateGroupCommand(
                 val loaderDefault = loaderVersions.latest ?: ""
                 if (loaderVersions.stable.isNotEmpty()) {
                     val display = loaderVersions.stable.take(10).joinToString("  ")
-                    w.println("  ${DIM}Available: $display$RESET")
+                    w.println("${DIM}Available: $display$RESET")
                 }
                 if (loaderDefault.isNotEmpty()) {
-                    modloaderVersion = prompt("  Modloader version", loaderDefault, candidates = loaderVersions.all)
+                    modloaderVersion = prompt("Modloader version", loaderDefault, candidates = loaderVersions.all)
                 } else {
-                    w.println("  ${YELLOW}No modloader versions found for $version — will use latest at install time$RESET")
+                    w.println("${YELLOW}No modloader versions found for $version$RESET")
                 }
             }
 
-            // Step 3c: Custom JAR name (for CUSTOM software)
+            // Step 3c: Custom JAR name
             var customJarName = ""
             if (software == ServerSoftware.CUSTOM) {
-                customJarName = prompt("  JAR filename in template", "server.jar")
-                w.println("  ${DIM}Place your server JAR as '$customJarName' in templates/${groupName.lowercase()}/$RESET")
+                customJarName = prompt("JAR filename in template", "server.jar")
+                w.println("${DIM}Place your server JAR as '$customJarName' in templates/${groupName.lowercase()}/$RESET")
             }
 
-            // Step 4: Min instances
-            val minInstances = promptInt("  Min instances", 1)
-
-            // Step 5: Max instances
-            val maxInstances = promptInt("  Max instances", 4)
-
-            // Step 6: Memory
+            // Step 4-6: Instances & memory
+            val minInstances = promptInt("Min instances", 1)
+            val maxInstances = promptInt("Max instances", 4)
             val defaultMemory = if (software in listOf(ServerSoftware.FORGE, ServerSoftware.NEOFORGE)) "2G" else "1G"
-            val memory = prompt("  Memory per instance", defaultMemory)
+            val memory = prompt("Memory per instance", defaultMemory)
 
-            // Step 7: Via plugins (only for Paper/Purpur)
+            // Step 7: Via plugins (Paper/Purpur only)
             val viaPlugins = if (software in listOf(ServerSoftware.PAPER, ServerSoftware.PURPUR)) {
                 promptViaPlugins(w, version, versions.latest)
             } else {
@@ -134,17 +147,17 @@ class CreateGroupCommand(
             }
 
             w.println()
-            w.println("  ${BOLD}Downloading files...$RESET")
+            w.println("${BOLD}Downloading files...$RESET")
             w.println()
 
             // Step 8: Download/install server
             val templateDir = templatesDir.resolve(groupName.lowercase())
             when (software) {
                 ServerSoftware.CUSTOM -> {
-                    w.println("  ${DIM}Custom software — skipping download$RESET")
+                    w.println("${DIM}Custom software — skipping download$RESET")
                     if (!templateDir.exists()) {
                         Files.createDirectories(templateDir)
-                        w.println("  ${GREEN}✓$RESET Created template dir: templates/${groupName.lowercase()}/")
+                        w.println("${GREEN}✓$RESET Created template dir: templates/${groupName.lowercase()}/")
                     }
                 }
                 ServerSoftware.FORGE -> {
@@ -181,40 +194,39 @@ class CreateGroupCommand(
                 }
             }
 
-            // Step 9: Download Via plugins
+            // Step 9: Via plugins
             for (plugin in viaPlugins) {
                 download(w, plugin.slug) {
                     softwareResolver.downloadViaPlugin(plugin, templateDir, "PAPER")
                 }
             }
 
-            // Step 10: Write group TOML
+            // Step 10: Write TOML
             w.println()
             writeGroupToml(groupName, software, version, modloaderVersion, customJarName, minInstances, maxInstances, memory)
-            w.println("  ${GREEN}✓$RESET groups/${groupName.lowercase()}.toml")
+            w.println("${GREEN}✓$RESET groups/${groupName.lowercase()}.toml")
 
-            // Step 11: Reload groups
+            // Step 11: Reload
             val configs = ConfigLoader.loadGroupConfigs(groupsDir)
             groupManager.reloadGroups(configs)
-            w.println("  ${GREEN}✓$RESET Group configs reloaded")
+            w.println("${GREEN}✓$RESET Group configs reloaded")
 
             w.println()
-            w.println("  ${GREEN}${BOLD}Group '$groupName' created!$RESET")
+            w.println("${GREEN}${BOLD}Group '$groupName' created!$RESET")
             w.println()
 
-            // Step 12: Ask to start an instance
+            // Step 12: Start?
             if (software != ServerSoftware.CUSTOM || templateDir.toFile().listFiles()?.any { it.name.endsWith(".jar") } == true) {
-                if (promptYesNo("  Start an instance now?", true)) {
-                    w.println()
+                if (promptYesNo("Start an instance now?", true)) {
                     try {
                         serviceManager.startService(groupName)
-                        w.println("  ${GREEN}✓$RESET Service start initiated for '$groupName'.")
+                        w.println("${GREEN}✓$RESET Service start initiated.")
                     } catch (e: Exception) {
-                        w.println("  ${RED}✗$RESET Failed to start service: ${e.message}")
+                        w.println("${RED}✗$RESET Failed: ${e.message}")
                     }
                 }
             } else {
-                w.println("  ${DIM}Place your server JAR in templates/${groupName.lowercase()}/ before starting.$RESET")
+                w.println("${DIM}Place your server JAR in templates/${groupName.lowercase()}/ before starting.$RESET")
             }
 
             w.println()
@@ -222,25 +234,26 @@ class CreateGroupCommand(
 
         } catch (_: UserInterruptException) {
             w.println()
-            w.println("  ${DIM}Cancelled.$RESET")
+            w.println("${DIM}Cancelled.$RESET")
             w.flush()
+        } finally {
+            console.eventsPaused = false
+            console.flushBufferedEvents()
         }
     }
 
-    // -- Prompt helpers -------------------------------------------------------
+    // -- Prompts (flush left) ------------------------------------------------
 
     private fun prompt(label: String, default: String, candidates: List<String> = emptyList()): String {
         val completer = if (candidates.isNotEmpty()) {
             Completer { _, _, list -> candidates.forEach { list.add(Candidate(it)) } }
         } else null
-
         val reader = LineReaderBuilder.builder()
             .terminal(terminal)
             .let { if (completer != null) it.completer(completer) else it }
             .build()
-
-        val defaultHint = if (default.isNotEmpty()) " ${DIM}[$default]${RESET}" else ""
-        val line = reader.readLine("$label$defaultHint${DIM}:$RESET ").trim()
+        val hint = if (default.isNotEmpty()) " ${DIM}[$default]${RESET}" else ""
+        val line = reader.readLine("$label$hint${DIM}:$RESET ").trim()
         return line.ifEmpty { default }
     }
 
@@ -255,128 +268,99 @@ class CreateGroupCommand(
     }
 
     private fun promptInt(label: String, default: Int): Int {
-        val answer = prompt(label, default.toString())
-        return answer.toIntOrNull() ?: default
+        return prompt(label, default.toString()).toIntOrNull() ?: default
     }
 
     private fun promptGroupName(w: java.io.PrintWriter): String? {
         while (true) {
-            val name = prompt("  Group name", "")
-            if (name.isBlank()) {
-                w.println("  ${RED}Name cannot be empty.$RESET")
-                w.flush()
-                continue
-            }
-            if (groupManager.getGroup(name) != null) {
-                w.println("  ${RED}Group '$name' already exists.$RESET")
-                w.flush()
-                continue
-            }
+            val name = prompt("Group name", "")
+            if (name.isBlank()) { w.println("${RED}Name cannot be empty.$RESET"); w.flush(); continue }
+            if (groupManager.getGroup(name) != null) { w.println("${RED}Group '$name' already exists.$RESET"); w.flush(); continue }
             return name
         }
     }
 
-    private fun promptSoftware(w: java.io.PrintWriter): ServerSoftware {
-        w.println("  ${DIM}Available server software:$RESET")
-        w.println("    ${CYAN}paper$RESET     — Paper (optimized vanilla, plugins)")
-        w.println("    ${CYAN}purpur$RESET    — Purpur (Paper fork, extra features)")
-        w.println("    ${CYAN}forge$RESET     — Forge (mods, auto-installs)")
-        w.println("    ${CYAN}neoforge$RESET  — NeoForge (modern Forge fork, auto-installs)")
-        w.println("    ${CYAN}fabric$RESET    — Fabric (lightweight mods, auto-installs)")
-        w.println("    ${CYAN}custom$RESET    — Custom JAR (bring your own server)")
+    private fun promptSoftware(w: java.io.PrintWriter): ServerSoftware? {
+        w.println("${DIM}Available server software:$RESET")
+        w.println("  ${CYAN}paper$RESET     — Paper (optimized vanilla, plugins)")
+        w.println("  ${CYAN}purpur$RESET    — Purpur (Paper fork, extra features)")
+        w.println("  ${CYAN}forge$RESET     — Forge (mods, auto-installs)")
+        w.println("  ${CYAN}neoforge$RESET  — NeoForge (modern Forge fork)")
+        w.println("  ${CYAN}fabric$RESET    — Fabric (lightweight mods)")
+        w.println("  ${CYAN}modpack$RESET   — Import a Modrinth modpack")
+        w.println("  ${CYAN}custom$RESET    — Custom JAR (bring your own)")
         w.flush()
 
-        val answer = prompt("  Server software", "paper",
-            candidates = listOf("paper", "purpur", "forge", "neoforge", "fabric", "custom"))
+        val answer = prompt("Server software", "paper",
+            candidates = listOf("paper", "purpur", "forge", "neoforge", "fabric", "modpack", "custom"))
         return when (answer.lowercase()) {
             "purpur" -> ServerSoftware.PURPUR
             "forge" -> ServerSoftware.FORGE
             "neoforge" -> ServerSoftware.NEOFORGE
             "fabric" -> ServerSoftware.FABRIC
             "custom" -> ServerSoftware.CUSTOM
+            "modpack" -> null // signals to switch to import flow
             else -> ServerSoftware.PAPER
         }
     }
 
-    private fun promptViaPlugins(
-        w: java.io.PrintWriter,
-        version: String,
-        latestVersion: String?
-    ): List<ViaPlugin> {
+    private fun promptViaPlugins(w: java.io.PrintWriter, version: String, latestVersion: String?): List<ViaPlugin> {
         val plugins = mutableListOf<ViaPlugin>()
-
         w.println()
-        w.println("  ${BOLD}Protocol support:$RESET")
-        w.println("  ${DIM}ViaVersion allows players with newer clients to join older servers.$RESET")
-        w.println("  ${DIM}ViaBackwards allows players with older clients to join newer servers.$RESET")
-        w.println("  ${DIM}ViaRewind extends backwards support to 1.7/1.8 clients.$RESET")
+        w.println("${BOLD}Protocol support:$RESET")
+        w.println("${DIM}ViaVersion allows newer clients, ViaBackwards allows older clients.$RESET")
         w.println()
 
-        val parts = version.split(".")
-        val minor = parts.getOrNull(1)?.toIntOrNull() ?: 21
-
+        val minor = version.split(".").getOrNull(1)?.toIntOrNull() ?: 21
         val isLatest = (latestVersion ?: "1.21.4") == version
+
         if (!isLatest) {
-            if (promptYesNo("  Install ${CYAN}ViaVersion$RESET? ${DIM}(newer clients can join)$RESET", true)) {
+            if (promptYesNo("Install ${CYAN}ViaVersion$RESET? ${DIM}(newer clients can join)$RESET", true)) {
                 plugins.add(ViaPlugin.VIA_VERSION)
             }
         } else {
-            if (promptYesNo("  Install ${CYAN}ViaVersion$RESET?", false)) {
+            if (promptYesNo("Install ${CYAN}ViaVersion$RESET?", false)) {
                 plugins.add(ViaPlugin.VIA_VERSION)
             }
         }
 
-        if (promptYesNo("  Install ${CYAN}ViaBackwards$RESET? ${DIM}(older clients can join)$RESET", minor >= 17)) {
+        if (promptYesNo("Install ${CYAN}ViaBackwards$RESET? ${DIM}(older clients can join)$RESET", minor >= 17)) {
             plugins.add(ViaPlugin.VIA_BACKWARDS)
-
-            if (minor >= 9) {
-                if (promptYesNo("  Install ${CYAN}ViaRewind$RESET? ${DIM}(extends support to 1.7/1.8)$RESET", false)) {
-                    plugins.add(ViaPlugin.VIA_REWIND)
-                }
+            if (minor >= 9 && promptYesNo("Install ${CYAN}ViaRewind$RESET? ${DIM}(1.7/1.8 clients)$RESET", false)) {
+                plugins.add(ViaPlugin.VIA_REWIND)
             }
         }
 
         if (plugins.isNotEmpty()) {
-            w.println("  ${GREEN}✓$RESET Via plugins: ${plugins.joinToString(", ") { it.slug }}")
+            w.println("${GREEN}✓$RESET Via plugins: ${plugins.joinToString(", ") { it.slug }}")
         } else {
-            w.println("  ${DIM}No Via plugins selected.$RESET")
+            w.println("${DIM}No Via plugins selected.$RESET")
         }
         w.flush()
-
         return plugins
     }
 
-    // -- Download helper ------------------------------------------------------
+    // -- Download helper -----------------------------------------------------
 
     private suspend fun download(w: java.io.PrintWriter, label: String, action: suspend () -> Boolean) {
-        w.print("  ${DIM}↓$RESET $label ")
+        w.print("${DIM}↓$RESET $label ")
         w.flush()
         val success = action()
         if (success) {
             w.println("${GREEN}✓$RESET")
         } else {
             w.println("${RED}✗$RESET")
-            w.println("    ${YELLOW}Download failed. You can place the file manually later.$RESET")
+            w.println("${YELLOW}Download failed. You can place the file manually later.$RESET")
         }
         w.flush()
     }
 
-    // -- Config writer --------------------------------------------------------
+    // -- TOML writer ---------------------------------------------------------
 
-    private fun writeGroupToml(
-        name: String,
-        software: ServerSoftware,
-        version: String,
-        modloaderVersion: String,
-        jarName: String,
-        minInstances: Int,
-        maxInstances: Int,
-        memory: String
-    ) {
+    private fun writeGroupToml(name: String, software: ServerSoftware, version: String, modloaderVersion: String, jarName: String, minInstances: Int, maxInstances: Int, memory: String) {
         Files.createDirectories(groupsDir)
         val templateName = name.lowercase()
         val isLobby = name.contains("lobby", ignoreCase = true)
-
         val modloaderLine = if (modloaderVersion.isNotEmpty()) "modloader_version = \"$modloaderVersion\"\n" else ""
         val jarNameLine = if (jarName.isNotEmpty() && jarName != "server.jar") "jar_name = \"$jarName\"\n" else ""
 

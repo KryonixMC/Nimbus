@@ -574,12 +574,15 @@ class SoftwareResolver {
 
     private suspend fun installFabric(mcVersion: String, loaderVersion: String, targetDir: Path): Boolean {
         return try {
-            val loaderVer = loaderVersion.ifEmpty {
-                val versions = fetchFabricLoaderVersions()
-                versions.latest ?: run {
-                    logger.error("No Fabric loader versions found")
-                    return false
-                }
+            // Always use the latest stable Fabric loader — it's backwards compatible
+            // and avoids conflicts with proxy mods that may require newer versions
+            val latestLoader = fetchFabricLoaderVersions().latest
+            val loaderVer = latestLoader ?: loaderVersion.ifEmpty {
+                logger.error("No Fabric loader versions found")
+                return false
+            }
+            if (loaderVersion.isNotEmpty() && latestLoader != null && latestLoader != loaderVersion) {
+                logger.info("Upgrading Fabric loader {} -> {} (latest stable, backwards compatible)", loaderVersion, latestLoader)
             }
 
             val installerVer = try {

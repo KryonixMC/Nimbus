@@ -106,13 +106,17 @@ class JavaResolver(
             if (Path.of(path).exists()) allJavas[ver] = path
         }
 
-        // Find best: highest in [min, max] range
+        // Prefer the exact minimum version (mods often require exactly this version)
+        // Fall back to lowest compatible if exact match not available
         val compatible = allJavas.keys
             .filter { it >= minJava && (maxJava == null || it <= maxJava) }
-            .sortedDescending()
+            .sorted()
 
         if (compatible.isNotEmpty()) {
-            return allJavas[compatible.first()]!!
+            // Prefer exact match for the required version
+            val exact = compatible.firstOrNull { it == minJava }
+            val best = exact ?: compatible.first()
+            return allJavas[best]!!
         }
 
         // Nothing in range — auto-download the best version
