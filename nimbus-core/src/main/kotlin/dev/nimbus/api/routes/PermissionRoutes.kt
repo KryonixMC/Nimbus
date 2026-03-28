@@ -58,6 +58,9 @@ fun Route.permissionRoutes(
                 if (request.default != null) {
                     permissionManager.setDefault(group.name, request.default)
                 }
+                if (request.prefix != null || request.suffix != null || request.priority != null) {
+                    permissionManager.updateGroupDisplay(group.name, request.prefix, request.suffix, request.priority)
+                }
                 if (request.permissions != null) {
                     // Replace all permissions
                     group.permissions.clear()
@@ -119,11 +122,15 @@ fun Route.permissionRoutes(
                 val uuid = call.parameters["uuid"]!!
                 val entry = permissionManager.getPlayer(uuid)
                 val effective = permissionManager.getEffectivePermissions(uuid)
+                val display = permissionManager.getPlayerDisplay(uuid)
                 call.respond(PlayerPermissionResponse(
                     uuid = uuid,
                     name = entry?.name ?: "unknown",
                     groups = entry?.groups ?: emptyList(),
-                    effectivePermissions = effective.sorted()
+                    effectivePermissions = effective.sorted(),
+                    prefix = display.prefix,
+                    suffix = display.suffix,
+                    displayGroup = display.groupName
                 ))
             }
 
@@ -133,11 +140,15 @@ fun Route.permissionRoutes(
                 val request = call.receive<PlayerRegisterRequest>()
                 permissionManager.registerPlayer(uuid, request.name)
                 val effective = permissionManager.getEffectivePermissions(uuid)
+                val display = permissionManager.getPlayerDisplay(uuid)
                 call.respond(PlayerPermissionResponse(
                     uuid = uuid,
                     name = request.name,
                     groups = permissionManager.getPlayer(uuid)?.groups ?: emptyList(),
-                    effectivePermissions = effective.sorted()
+                    effectivePermissions = effective.sorted(),
+                    prefix = display.prefix,
+                    suffix = display.suffix,
+                    displayGroup = display.groupName
                 ))
             }
 
@@ -187,6 +198,9 @@ fun Route.permissionRoutes(
 private fun dev.nimbus.permissions.PermissionGroup.toResponse() = PermissionGroupResponse(
     name = name,
     default = default,
+    prefix = prefix,
+    suffix = suffix,
+    priority = priority,
     permissions = permissions.toList(),
     parents = parents.toList()
 )

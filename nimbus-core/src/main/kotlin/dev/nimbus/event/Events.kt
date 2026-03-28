@@ -51,6 +51,12 @@ sealed class NimbusEvent {
     data class ProxyUpdateAvailable(val currentVersion: String, val newVersion: String) : NimbusEvent()
     data class ProxyUpdateApplied(val oldVersion: String, val newVersion: String) : NimbusEvent()
 
+    // Proxy Sync
+    data class TabListUpdated(val header: String, val footer: String, val playerFormat: String, val updateInterval: Int) : NimbusEvent()
+    data class MotdUpdated(val line1: String, val line2: String, val maxPlayers: Int, val playerCountOffset: Int) : NimbusEvent()
+    data class PlayerTabUpdated(val uuid: String, val format: String?) : NimbusEvent()
+    data class ChatFormatUpdated(val format: String, val enabled: Boolean) : NimbusEvent()
+
     // Config
     data class ConfigReloaded(val groupsLoaded: Int) : NimbusEvent()
 

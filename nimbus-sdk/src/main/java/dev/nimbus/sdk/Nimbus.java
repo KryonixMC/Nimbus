@@ -3,6 +3,7 @@ package dev.nimbus.sdk;
 import dev.nimbus.sdk.event.TypedEvent;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -36,6 +37,7 @@ import java.util.function.Consumer;
 public final class Nimbus {
 
     private static NimbusSelfService self;
+    private static NimbusClient clientRef;
     private static ServiceCache cache;
     private static PlayerTracker tracker;
     private static NimbusEventStream eventStream;
@@ -54,10 +56,11 @@ public final class Nimbus {
         if (initialized) return;
 
         self = NimbusSelfService.fromSystemProperties();
-        cache = new ServiceCache(self.getClient());
-        tracker = new PlayerTracker(self.getClient());
-        router = new ServiceRouter(self.getClient());
-        eventStream = self.getClient().createEventStream();
+        clientRef = self.getClient();
+        cache = new ServiceCache(clientRef);
+        tracker = new PlayerTracker(clientRef);
+        router = new ServiceRouter(clientRef);
+        eventStream = clientRef.createEventStream();
 
         cache.start();
         tracker.start();
@@ -72,11 +75,11 @@ public final class Nimbus {
     public static void init(String apiUrl, String token) {
         if (initialized) return;
 
-        NimbusClient client = new NimbusClient(apiUrl, token);
-        cache = new ServiceCache(client);
-        tracker = new PlayerTracker(client);
-        router = new ServiceRouter(client);
-        eventStream = client.createEventStream();
+        clientRef = new NimbusClient(apiUrl, token);
+        cache = new ServiceCache(clientRef);
+        tracker = new PlayerTracker(clientRef);
+        router = new ServiceRouter(clientRef);
+        eventStream = clientRef.createEventStream();
 
         cache.start();
         tracker.start();
@@ -98,6 +101,7 @@ public final class Nimbus {
         if (eventStream != null) eventStream.close();
         if (cache != null) cache.close();
         if (tracker != null) tracker.close();
+        clientRef = null;
         initialized = false;
     }
 
@@ -207,6 +211,20 @@ public final class Nimbus {
         tracker.onPlayerCountChange(group, handler);
     }
 
+    // ── Proxy Sync (Tab Names) ─────────────────────────────────────────
+
+    /** Set a player's tab list display name (MiniMessage format, e.g. "&lt;red&gt;[RED] {player}"). */
+    public static CompletableFuture<Void> setTabName(UUID player, String format) {
+        requireInit();
+        return clientRef.setPlayerTabFormat(player.toString(), format);
+    }
+
+    /** Clear a player's tab list display name override (reverts to default format). */
+    public static CompletableFuture<Void> clearTabName(UUID player) {
+        requireInit();
+        return clientRef.clearPlayerTabFormat(player.toString());
+    }
+
     // ── Messaging ─────────────────────────────────────────────────────
 
     /** Send a message to another service. */
@@ -226,7 +244,7 @@ public final class Nimbus {
     /** Get the underlying client for advanced API calls. */
     public static NimbusClient client() {
         requireInit();
-        return self != null ? self.getClient() : cache != null ? null : null;
+        return clientRef;
     }
 
     /** Get the service cache. */

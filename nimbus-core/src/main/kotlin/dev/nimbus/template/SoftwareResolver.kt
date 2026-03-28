@@ -123,7 +123,9 @@ class SoftwareResolver {
             val response = client.get("https://api.papermc.io/v2/projects/velocity")
             if (response.status != HttpStatusCode.OK) return VersionList.EMPTY
             val data = json.decodeFromString<PaperProjectResponse>(response.bodyAsText())
-            categorizeVersions(data.versions)
+            // Velocity uses SNAPSHOT versions as primary distribution —
+            // treat all versions as stable to avoid false update suggestions
+            VersionList(stable = data.versions.reversed(), snapshots = emptyList())
         } catch (e: Exception) {
             logger.error("Failed to fetch Velocity versions: {}", e.message)
             VersionList.EMPTY

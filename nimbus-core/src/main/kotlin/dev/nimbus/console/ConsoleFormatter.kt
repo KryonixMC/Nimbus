@@ -175,6 +175,14 @@ object ConsoleFormatter {
                 "${warn("↑ UPDATE")} Velocity ${BOLD}${event.currentVersion}${RESET} → ${BOLD}${event.newVersion}${RESET} available"
             is NimbusEvent.ProxyUpdateApplied ->
                 "${success("✓ UPDATE")} Velocity updated to ${BOLD}${event.newVersion}${RESET} ${DIM}(restart proxy to apply)${RESET}"
+            is NimbusEvent.TabListUpdated ->
+                "${info("~ TAB")} tab list updated ${DIM}(interval=${event.updateInterval}s)${RESET}"
+            is NimbusEvent.MotdUpdated ->
+                "${info("~ MOTD")} MOTD updated"
+            is NimbusEvent.PlayerTabUpdated ->
+                "${info("~ TAB")} player ${BOLD}${event.uuid}${RESET} ${if (event.format != null) "override set" else "override cleared"}"
+            is NimbusEvent.ChatFormatUpdated ->
+                "${info("~ CHAT")} chat format updated ${DIM}(enabled=${event.enabled})${RESET}"
             is NimbusEvent.ConfigReloaded ->
                 "${info("↻ CONFIG")} reloaded ${BOLD}${event.groupsLoaded}${RESET} group(s)"
         }

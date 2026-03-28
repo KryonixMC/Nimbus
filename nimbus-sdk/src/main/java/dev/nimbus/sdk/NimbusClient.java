@@ -188,6 +188,30 @@ public class NimbusClient {
         return post("/api/players/" + encode(playerName) + "/send", body).thenApply(r -> null);
     }
 
+    // ── Proxy Sync ─────────────────────────────────────────────────────
+
+    /** Get the full proxy sync config (tab list + MOTD). */
+    public CompletableFuture<JsonObject> getProxyConfig() {
+        return get("/api/proxy/config").thenApply(JsonElement::getAsJsonObject);
+    }
+
+    /** Get all player tab overrides. */
+    public CompletableFuture<JsonObject> getPlayerTabOverrides() {
+        return get("/api/proxy/tablist/players").thenApply(JsonElement::getAsJsonObject);
+    }
+
+    /** Set a player's tab list display name (MiniMessage format). */
+    public CompletableFuture<Void> setPlayerTabFormat(String uuid, String format) {
+        JsonObject body = new JsonObject();
+        body.addProperty("format", format);
+        return put("/api/proxy/tablist/players/" + encode(uuid), body).thenApply(r -> null);
+    }
+
+    /** Clear a player's tab list display name override. */
+    public CompletableFuture<Void> clearPlayerTabFormat(String uuid) {
+        return delete("/api/proxy/tablist/players/" + encode(uuid)).thenApply(r -> null);
+    }
+
     // ── Events ────────────────────────────────────────────────────────
 
     /**
@@ -224,6 +248,11 @@ public class NimbusClient {
         HttpRequest.Builder builder = buildRequest(path);
         builder.PUT(HttpRequest.BodyPublishers.ofString(gson.toJson(body)));
         return execute(builder.build());
+    }
+
+    private CompletableFuture<JsonElement> delete(String path) {
+        HttpRequest request = buildRequest(path).DELETE().build();
+        return execute(request);
     }
 
     private HttpRequest.Builder buildRequest(String path) {

@@ -334,6 +334,9 @@ data class DisplayListResponse(
 data class PermissionGroupResponse(
     val name: String,
     val default: Boolean,
+    val prefix: String = "",
+    val suffix: String = "",
+    val priority: Int = 0,
     val permissions: List<String>,
     val parents: List<String>
 )
@@ -353,6 +356,9 @@ data class CreatePermissionGroupRequest(
 @Serializable
 data class UpdatePermissionGroupRequest(
     val default: Boolean? = null,
+    val prefix: String? = null,
+    val suffix: String? = null,
+    val priority: Int? = null,
     val permissions: List<String>? = null,
     val parents: List<String>? = null
 )
@@ -372,7 +378,10 @@ data class PlayerPermissionResponse(
     val uuid: String,
     val name: String,
     val groups: List<String>,
-    val effectivePermissions: List<String>
+    val effectivePermissions: List<String>,
+    val prefix: String = "",
+    val suffix: String = "",
+    val displayGroup: String = ""
 )
 
 @Serializable
@@ -391,6 +400,70 @@ data class PermissionCheckResponse(
     val uuid: String,
     val permission: String,
     val allowed: Boolean
+)
+
+// ── Proxy Sync DTOs ────────────────────────────────────────────────
+
+@Serializable
+data class ProxySyncResponse(
+    val tablist: TabListResponse,
+    val motd: MotdResponse,
+    val chat: ChatResponse
+)
+
+@Serializable
+data class TabListResponse(
+    val header: String,
+    val footer: String,
+    val playerFormat: String,
+    val updateInterval: Int
+)
+
+@Serializable
+data class TabListUpdateRequest(
+    val header: String? = null,
+    val footer: String? = null,
+    val playerFormat: String? = null,
+    val updateInterval: Int? = null
+)
+
+@Serializable
+data class MotdResponse(
+    val line1: String,
+    val line2: String,
+    val maxPlayers: Int,
+    val playerCountOffset: Int
+)
+
+@Serializable
+data class MotdUpdateRequest(
+    val line1: String? = null,
+    val line2: String? = null,
+    val maxPlayers: Int? = null,
+    val playerCountOffset: Int? = null
+)
+
+@Serializable
+data class PlayerTabFormatRequest(
+    val format: String
+)
+
+@Serializable
+data class PlayerTabOverridesResponse(
+    val overrides: Map<String, String>,
+    val total: Int
+)
+
+@Serializable
+data class ChatResponse(
+    val format: String,
+    val enabled: Boolean
+)
+
+@Serializable
+data class ChatUpdateRequest(
+    val format: String? = null,
+    val enabled: Boolean? = null
 )
 
 // ── Event DTOs (for WebSocket) ──────────────────────────────────────

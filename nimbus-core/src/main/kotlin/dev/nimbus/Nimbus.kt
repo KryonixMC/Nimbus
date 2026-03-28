@@ -18,6 +18,7 @@ import dev.nimbus.template.SoftwareResolver
 import dev.nimbus.template.TemplateManager
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
+import java.lang.management.ManagementFactory
 import java.nio.file.Files
 import java.nio.file.Path as NioPath
 import kotlin.io.path.Path
@@ -26,7 +27,42 @@ import kotlin.io.path.exists
 
 private val logger by lazy { LoggerFactory.getLogger("Nimbus") }
 
-fun main() = runBlocking {
+fun main() {
+    // Relaunch with --enable-native-access=ALL-UNNAMED if not already set (suppresses JLine warnings on Java 21+)
+    if (needsNativeAccessRelaunch()) {
+        val javaExe = ProcessHandle.current().info().command().orElse("java")
+        val jarPath = Nimbus::class.java.protectionDomain.codeSource?.location?.toURI()?.path
+        val currentArgs = ManagementFactory.getRuntimeMXBean().inputArguments
+
+        if (jarPath != null) {
+            val cmd = mutableListOf(javaExe)
+            cmd.addAll(currentArgs)
+            cmd.add("--enable-native-access=ALL-UNNAMED")
+            cmd.addAll(listOf("-jar", jarPath))
+
+            val process = ProcessBuilder(cmd)
+                .inheritIO()
+                .start()
+
+            Runtime.getRuntime().addShutdownHook(Thread { process.destroyForcibly() })
+            System.exit(process.waitFor())
+        }
+    }
+
+    nimbusMain()
+}
+
+private fun needsNativeAccessRelaunch(): Boolean {
+    val runtimeVersion = Runtime.version().feature()
+    if (runtimeVersion < 21) return false
+    return ManagementFactory.getRuntimeMXBean().inputArguments
+        .none { it.startsWith("--enable-native-access") }
+}
+
+/** Marker class for locating the JAR path */
+private class Nimbus
+
+fun nimbusMain() = runBlocking {
     val baseDir = Path("").toAbsolutePath()
 
     // Rotate latest.log → YYYY-MM-DD-N.log.gz (Minecraft-style)
@@ -87,9 +123,10 @@ fun main() = runBlocking {
 
     val permissionsDir = baseDir.resolve("permissions")
     val displaysDir = baseDir.resolve("displays")
+    val proxyDir = baseDir.resolve("proxy")
 
     listOf(
-        templatesDir, staticDir, tempDir, logsDir, groupsDir, permissionsDir, displaysDir,
+        templatesDir, staticDir, tempDir, logsDir, groupsDir, permissionsDir, displaysDir, proxyDir,
         globalTemplateDir, globalTemplateDir.resolve("plugins"),
         globalProxyTemplateDir, globalProxyTemplateDir.resolve("plugins")
     ).forEach { dir ->
@@ -130,6 +167,9 @@ fun main() = runBlocking {
 
     val displayManager = dev.nimbus.display.DisplayManager(displaysDir)
     displayManager.init()
+
+    val proxySyncManager = dev.nimbus.proxy.ProxySyncManager(proxyDir)
+    proxySyncManager.init()
 
     // Load group configs
     val groupConfigs = ConfigLoader.loadGroupConfigs(groupsDir)
@@ -174,6 +214,7 @@ fun main() = runBlocking {
         groupManager = groupManager,
         permissionManager = permissionManager,
         displayManager = displayManager,
+        proxySyncManager = proxySyncManager,
         eventBus = eventBus,
         scope = scope,
         baseDir = baseDir,

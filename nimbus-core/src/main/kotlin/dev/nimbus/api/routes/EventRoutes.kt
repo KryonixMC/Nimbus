@@ -207,6 +207,29 @@ private fun NimbusEvent.toEventMessage(): EventMessage {
             timestamp = timestamp.toString(),
             data = mapOf("uuid" to uuid, "player" to playerName)
         )
+        is NimbusEvent.TabListUpdated -> EventMessage(
+            type = "TABLIST_UPDATED",
+            timestamp = timestamp.toString(),
+            data = mapOf("header" to header, "footer" to footer, "playerFormat" to playerFormat, "updateInterval" to updateInterval.toString())
+        )
+        is NimbusEvent.MotdUpdated -> EventMessage(
+            type = "MOTD_UPDATED",
+            timestamp = timestamp.toString(),
+            data = mapOf("line1" to line1, "line2" to line2, "maxPlayers" to maxPlayers.toString(), "playerCountOffset" to playerCountOffset.toString())
+        )
+        is NimbusEvent.PlayerTabUpdated -> EventMessage(
+            type = "PLAYER_TAB_UPDATED",
+            timestamp = timestamp.toString(),
+            data = buildMap {
+                put("uuid", uuid)
+                if (format != null) put("format", format)
+            }
+        )
+        is NimbusEvent.ChatFormatUpdated -> EventMessage(
+            type = "CHAT_FORMAT_UPDATED",
+            timestamp = timestamp.toString(),
+            data = mapOf("format" to format, "enabled" to enabled.toString())
+        )
         is NimbusEvent.ConfigReloaded -> EventMessage(
             type = "CONFIG_RELOADED",
             timestamp = timestamp.toString(),

@@ -70,6 +70,20 @@ class PermsCommand(
                 if (args.size < 3) return println(ConsoleFormatter.error("Usage: perms group removeparent <group> <parent>"))
                 groupRemoveParent(args[1], args[2])
             }
+            "setprefix" -> {
+                if (args.size < 3) return println(ConsoleFormatter.error("Usage: perms group setprefix <group> <prefix...>"))
+                groupSetPrefix(args[1], args.drop(2).joinToString(" "))
+            }
+            "setsuffix" -> {
+                if (args.size < 3) return println(ConsoleFormatter.error("Usage: perms group setsuffix <group> <suffix...>"))
+                groupSetSuffix(args[1], args.drop(2).joinToString(" "))
+            }
+            "setpriority" -> {
+                if (args.size < 3) return println(ConsoleFormatter.error("Usage: perms group setpriority <group> <number>"))
+                val priority = args[2].toIntOrNull()
+                if (priority == null) return println(ConsoleFormatter.error("Priority must be a number."))
+                groupSetPriority(args[1], priority)
+            }
             else -> printGroupUsage()
         }
     }
@@ -107,11 +121,14 @@ class PermsCommand(
             return
         }
 
-        val headers = listOf("NAME", "DEFAULT", "PERMISSIONS", "PARENTS")
-        val rows = groups.sortedBy { it.name }.map { group ->
+        val headers = listOf("NAME", "DEFAULT", "PRIORITY", "PREFIX", "PERMISSIONS", "PARENTS")
+        val rows = groups.sortedByDescending { it.priority }.map { group ->
             listOf(
                 ConsoleFormatter.colorize(group.name, ConsoleFormatter.BOLD),
                 if (group.default) ConsoleFormatter.colorize("yes", ConsoleFormatter.GREEN) else "no",
+                group.priority.toString(),
+                if (group.prefix.isEmpty()) ConsoleFormatter.colorize("-", ConsoleFormatter.DIM)
+                else group.prefix,
                 group.permissions.size.toString(),
                 if (group.parents.isEmpty()) ConsoleFormatter.colorize("-", ConsoleFormatter.DIM)
                 else group.parents.joinToString(", ")
@@ -131,8 +148,11 @@ class PermsCommand(
         }
 
         println(ConsoleFormatter.header("Permission Group: ${group.name}"))
-        println("  ${ConsoleFormatter.DIM}Default:${ConsoleFormatter.RESET}  ${if (group.default) ConsoleFormatter.success("yes") else "no"}")
-        println("  ${ConsoleFormatter.DIM}Parents:${ConsoleFormatter.RESET}  ${if (group.parents.isEmpty()) "-" else group.parents.joinToString(", ")}")
+        println("  ${ConsoleFormatter.DIM}Default:${ConsoleFormatter.RESET}   ${if (group.default) ConsoleFormatter.success("yes") else "no"}")
+        println("  ${ConsoleFormatter.DIM}Priority:${ConsoleFormatter.RESET}  ${group.priority}")
+        println("  ${ConsoleFormatter.DIM}Prefix:${ConsoleFormatter.RESET}    ${if (group.prefix.isEmpty()) "-" else group.prefix}")
+        println("  ${ConsoleFormatter.DIM}Suffix:${ConsoleFormatter.RESET}    ${if (group.suffix.isEmpty()) "-" else group.suffix}")
+        println("  ${ConsoleFormatter.DIM}Parents:${ConsoleFormatter.RESET}   ${if (group.parents.isEmpty()) "-" else group.parents.joinToString(", ")}")
         println()
         println(ConsoleFormatter.section("Permissions (${group.permissions.size})"))
 
@@ -216,6 +236,36 @@ class PermsCommand(
         }
     }
 
+    private suspend fun groupSetPrefix(groupName: String, prefix: String) {
+        try {
+            permissionManager.updateGroupDisplay(groupName, prefix = prefix, suffix = null, priority = null)
+            eventBus.emit(NimbusEvent.PermissionGroupUpdated(groupName))
+            println(ConsoleFormatter.success("Prefix for '$groupName' set to: $prefix"))
+        } catch (e: IllegalArgumentException) {
+            println(ConsoleFormatter.error(e.message ?: "Failed"))
+        }
+    }
+
+    private suspend fun groupSetSuffix(groupName: String, suffix: String) {
+        try {
+            permissionManager.updateGroupDisplay(groupName, prefix = null, suffix = suffix, priority = null)
+            eventBus.emit(NimbusEvent.PermissionGroupUpdated(groupName))
+            println(ConsoleFormatter.success("Suffix for '$groupName' set to: $suffix"))
+        } catch (e: IllegalArgumentException) {
+            println(ConsoleFormatter.error(e.message ?: "Failed"))
+        }
+    }
+
+    private suspend fun groupSetPriority(groupName: String, priority: Int) {
+        try {
+            permissionManager.updateGroupDisplay(groupName, prefix = null, suffix = null, priority = priority)
+            eventBus.emit(NimbusEvent.PermissionGroupUpdated(groupName))
+            println(ConsoleFormatter.success("Priority for '$groupName' set to $priority."))
+        } catch (e: IllegalArgumentException) {
+            println(ConsoleFormatter.error(e.message ?: "Failed"))
+        }
+    }
+
     // ── User subcommands ────────────────────────────────────
 
     private fun userInfo(identifier: String) {
@@ -243,6 +293,7 @@ class PermsCommand(
 
         val effective = permissionManager.getEffectivePermissions(uuid)
         val defaultGroup = permissionManager.getDefaultGroup()
+        val display = permissionManager.getPlayerDisplay(uuid)
 
         println(ConsoleFormatter.header("Player: $playerName"))
         println("  ${ConsoleFormatter.DIM}UUID:${ConsoleFormatter.RESET}    $uuid")
@@ -250,6 +301,7 @@ class PermsCommand(
         if (defaultGroup != null) {
             println("  ${ConsoleFormatter.DIM}Default:${ConsoleFormatter.RESET} ${defaultGroup.name}")
         }
+        println("  ${ConsoleFormatter.DIM}Display:${ConsoleFormatter.RESET} ${display.prefix}$playerName${display.suffix} ${ConsoleFormatter.DIM}(group: ${display.groupName}, priority: ${display.priority})${ConsoleFormatter.RESET}")
         println()
         println(ConsoleFormatter.section("Effective Permissions (${effective.size})"))
 
@@ -338,6 +390,9 @@ class PermsCommand(
         println("  ${ConsoleFormatter.CYAN}perms group setdefault <group>${ConsoleFormatter.RESET}           Set as default group")
         println("  ${ConsoleFormatter.CYAN}perms group addparent <group> <parent>${ConsoleFormatter.RESET}  Add inheritance")
         println("  ${ConsoleFormatter.CYAN}perms group removeparent <group> <parent>${ConsoleFormatter.RESET} Remove inheritance")
+        println("  ${ConsoleFormatter.CYAN}perms group setprefix <group> <prefix...>${ConsoleFormatter.RESET} Set display prefix (MiniMessage)")
+        println("  ${ConsoleFormatter.CYAN}perms group setsuffix <group> <suffix...>${ConsoleFormatter.RESET} Set display suffix (MiniMessage)")
+        println("  ${ConsoleFormatter.CYAN}perms group setpriority <group> <number>${ConsoleFormatter.RESET} Set display priority")
         println("  ${ConsoleFormatter.CYAN}perms user list${ConsoleFormatter.RESET}                          List all players")
         println("  ${ConsoleFormatter.CYAN}perms user info <name|uuid>${ConsoleFormatter.RESET}              Show player perms")
         println("  ${ConsoleFormatter.CYAN}perms user addgroup <name|uuid> <group>${ConsoleFormatter.RESET} Assign group")
@@ -346,7 +401,7 @@ class PermsCommand(
     }
 
     private fun printGroupUsage() {
-        println(ConsoleFormatter.error("Usage: perms group <list|info|create|delete|addperm|removeperm|setdefault|addparent|removeparent>"))
+        println(ConsoleFormatter.error("Usage: perms group <list|info|create|delete|addperm|removeperm|setdefault|addparent|removeparent|setprefix|setsuffix|setpriority>"))
     }
 
     private fun printUserUsage() {

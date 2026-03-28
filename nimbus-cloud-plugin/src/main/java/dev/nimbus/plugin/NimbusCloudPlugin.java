@@ -63,23 +63,72 @@ public class NimbusCloudPlugin {
 
         // Register permission provider (if bridge config exists)
         registerPermissionProvider();
+
+        // Register proxy sync (tab list + MOTD)
+        registerProxySync();
+
+        // Connect shared event stream (after all handlers are registered)
+        connectSharedEventStream();
+    }
+
+    private void registerProxySync() {
+        try {
+            BridgeConfig config = BridgeConfig.load(dataDirectory);
+            if (config == null) return;
+
+            ensureSharedClients(config);
+            proxySyncListener = new ProxySyncListener(server, logger, sharedApiClient, sharedEventStream);
+            proxySyncListener.init();
+            server.getEventManager().register(this, proxySyncListener);
+
+            logger.info("Proxy Sync registered (tab list + MOTD)");
+        } catch (Exception e) {
+            logger.warn("Failed to register proxy sync: {}", e.getMessage());
+        }
+    }
+
+    private void connectSharedEventStream() {
+        if (sharedEventStream != null) {
+            try {
+                sharedEventStream.connect();
+                logger.info("Shared event stream connected");
+            } catch (Exception e) {
+                logger.warn("Failed to connect shared event stream: {}", e.getMessage());
+            }
+        }
     }
 
     private NimbusPermissionProvider permissionProvider;
+    private dev.nimbus.sdk.NimbusEventStream sharedEventStream;
+    private dev.nimbus.sdk.NimbusClient sharedSdkClient;
+    private NimbusApiClient sharedApiClient;
+    private ProxySyncListener proxySyncListener;
+
+    private void ensureSharedClients(BridgeConfig config) {
+        if (sharedSdkClient == null) {
+            sharedSdkClient = new dev.nimbus.sdk.NimbusClient(config.getApiUrl(), config.getToken());
+        }
+        if (sharedApiClient == null) {
+            sharedApiClient = new NimbusApiClient(config.getApiUrl(), config.getToken());
+        }
+        if (sharedEventStream == null) {
+            sharedEventStream = sharedSdkClient.createEventStream();
+        }
+    }
 
     private void registerPermissionProvider() {
         try {
             BridgeConfig config = BridgeConfig.load(dataDirectory);
             if (config == null) return;
 
-            NimbusApiClient apiClient = new NimbusApiClient(config.getApiUrl(), config.getToken());
-            permissionProvider = new NimbusPermissionProvider(apiClient, logger);
+            ensureSharedClients(config);
+            permissionProvider = new NimbusPermissionProvider(sharedApiClient, logger);
 
             // Register as Velocity's permission provider
             server.getEventManager().register(this, new PermissionListener(permissionProvider));
 
-            // Listen for permission change events via WebSocket and refresh online players
-            startPermissionEventListener(config);
+            // Listen for permission change events via shared WebSocket
+            registerPermissionEventHandlers();
 
             logger.info("Nimbus Permission Provider registered");
         } catch (Exception e) {
@@ -87,39 +136,25 @@ public class NimbusCloudPlugin {
         }
     }
 
-    private dev.nimbus.sdk.NimbusEventStream eventStream;
-
     /**
-     * Connects to the Nimbus event stream and refreshes all online players'
-     * permissions when a permission-related event is received.
+     * Registers permission-related event handlers on the shared event stream.
      */
-    private void startPermissionEventListener(BridgeConfig config) {
-        try {
-            dev.nimbus.sdk.NimbusClient sdkClient = new dev.nimbus.sdk.NimbusClient(config.getApiUrl(), config.getToken());
-            eventStream = sdkClient.createEventStream();
-
-            // Listen for any permission change → refresh all online players
-            eventStream.onEvent("PERMISSION_GROUP_CREATED", e -> refreshAllPermissions());
-            eventStream.onEvent("PERMISSION_GROUP_UPDATED", e -> refreshAllPermissions());
-            eventStream.onEvent("PERMISSION_GROUP_DELETED", e -> refreshAllPermissions());
-            eventStream.onEvent("PLAYER_PERMISSIONS_UPDATED", e -> {
-                String uuid = e.get("uuid");
-                if (uuid != null) {
-                    try {
-                        refreshPlayerPermissions(java.util.UUID.fromString(uuid));
-                    } catch (IllegalArgumentException ignored) {
-                        refreshAllPermissions();
-                    }
-                } else {
+    private void registerPermissionEventHandlers() {
+        sharedEventStream.onEvent("PERMISSION_GROUP_CREATED", e -> refreshAllPermissions());
+        sharedEventStream.onEvent("PERMISSION_GROUP_UPDATED", e -> refreshAllPermissions());
+        sharedEventStream.onEvent("PERMISSION_GROUP_DELETED", e -> refreshAllPermissions());
+        sharedEventStream.onEvent("PLAYER_PERMISSIONS_UPDATED", e -> {
+            String uuid = e.get("uuid");
+            if (uuid != null) {
+                try {
+                    refreshPlayerPermissions(java.util.UUID.fromString(uuid));
+                } catch (IllegalArgumentException ignored) {
                     refreshAllPermissions();
                 }
-            });
-
-            eventStream.connect();
-            logger.info("Permission event listener connected");
-        } catch (Exception e) {
-            logger.warn("Failed to start permission event listener: {}", e.getMessage());
-        }
+            } else {
+                refreshAllPermissions();
+            }
+        });
     }
 
     private void refreshAllPermissions() {
@@ -146,9 +181,8 @@ public class NimbusCloudPlugin {
                 return;
             }
 
-            dev.nimbus.sdk.NimbusClient sdkClient = new dev.nimbus.sdk.NimbusClient(config.getApiUrl(), config.getToken());
-            NimbusApiClient apiClient = new NimbusApiClient(config.getApiUrl(), config.getToken());
-            CloudCommand cloudCommand = new CloudCommand(apiClient, sdkClient, server);
+            ensureSharedClients(config);
+            CloudCommand cloudCommand = new CloudCommand(sharedApiClient, sharedSdkClient, server);
 
             // Register /cloud and /nimbus
             for (String alias : new String[]{"cloud", "nimbus"}) {

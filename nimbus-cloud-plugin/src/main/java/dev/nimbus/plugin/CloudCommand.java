@@ -52,7 +52,8 @@ public class CloudCommand implements SimpleCommand {
 
     private static final List<String> PERMS_SUBCMDS = List.of("group", "user");
     private static final List<String> PERMS_GROUP_SUBCMDS = List.of(
-            "list", "info", "create", "delete", "addperm", "removeperm", "setdefault", "addparent", "removeparent"
+            "list", "info", "create", "delete", "addperm", "removeperm", "setdefault", "addparent", "removeparent",
+            "setprefix", "setsuffix", "setpriority"
     );
     private static final List<String> PERMS_USER_SUBCMDS = List.of("list", "info", "addgroup", "removegroup");
 
@@ -598,6 +599,14 @@ public class CloudCommand implements SimpleCommand {
                     source.sendMessage(Component.text("  " + g.get("name").getAsString(), NamedTextColor.AQUA).decorate(TextDecoration.BOLD));
                     source.sendMessage(Component.text("  Default: ", NamedTextColor.GRAY)
                             .append(Component.text(g.get("default").getAsBoolean() ? "Yes" : "No", NamedTextColor.WHITE)));
+                    source.sendMessage(Component.text("  Priority: ", NamedTextColor.GRAY)
+                            .append(Component.text(g.has("priority") ? g.get("priority").getAsString() : "0", NamedTextColor.WHITE)));
+                    String prefix = g.has("prefix") && !g.get("prefix").getAsString().isEmpty() ? g.get("prefix").getAsString() : "-";
+                    String suffix = g.has("suffix") && !g.get("suffix").getAsString().isEmpty() ? g.get("suffix").getAsString() : "-";
+                    source.sendMessage(Component.text("  Prefix: ", NamedTextColor.GRAY)
+                            .append(Component.text(prefix, NamedTextColor.WHITE)));
+                    source.sendMessage(Component.text("  Suffix: ", NamedTextColor.GRAY)
+                            .append(Component.text(suffix, NamedTextColor.WHITE)));
 
                     JsonArray parents = g.getAsJsonArray("parents");
                     if (parents != null && !parents.isEmpty()) {
@@ -704,6 +713,38 @@ public class CloudCommand implements SimpleCommand {
                     });
                 });
             }
+            case "setprefix" -> {
+                if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group setprefix <group> <prefix...>", NamedTextColor.RED)); return; }
+                String prefix = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                JsonObject body = new JsonObject();
+                body.addProperty("prefix", prefix);
+                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                    if (result.isSuccess()) source.sendMessage(Component.text("Prefix for '" + args[3] + "' set to: " + prefix, NamedTextColor.GREEN));
+                    else source.sendMessage(apiError(result));
+                });
+            }
+            case "setsuffix" -> {
+                if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group setsuffix <group> <suffix...>", NamedTextColor.RED)); return; }
+                String suffix = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                JsonObject body = new JsonObject();
+                body.addProperty("suffix", suffix);
+                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                    if (result.isSuccess()) source.sendMessage(Component.text("Suffix for '" + args[3] + "' set to: " + suffix, NamedTextColor.GREEN));
+                    else source.sendMessage(apiError(result));
+                });
+            }
+            case "setpriority" -> {
+                if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group setpriority <group> <number>", NamedTextColor.RED)); return; }
+                int priority;
+                try { priority = Integer.parseInt(args[4]); }
+                catch (NumberFormatException e) { source.sendMessage(Component.text("Priority must be a number.", NamedTextColor.RED)); return; }
+                JsonObject body = new JsonObject();
+                body.addProperty("priority", priority);
+                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                    if (result.isSuccess()) source.sendMessage(Component.text("Priority for '" + args[3] + "' set to " + priority + ".", NamedTextColor.GREEN));
+                    else source.sendMessage(apiError(result));
+                });
+            }
             default -> source.sendMessage(Component.text("Unknown perms group subcommand: " + action, NamedTextColor.RED));
         }
     }
@@ -740,6 +781,15 @@ public class CloudCommand implements SimpleCommand {
                     groups.forEach(g -> groupNames.add(g.getAsString()));
                     source.sendMessage(Component.text("  Groups: ", NamedTextColor.GRAY)
                             .append(Component.text(groupNames.isEmpty() ? "-" : String.join(", ", groupNames), NamedTextColor.WHITE)));
+
+                    String dispPrefix = json.has("prefix") ? json.get("prefix").getAsString() : "";
+                    String dispSuffix = json.has("suffix") ? json.get("suffix").getAsString() : "";
+                    String dispGroup = json.has("displayGroup") ? json.get("displayGroup").getAsString() : "";
+                    if (!dispPrefix.isEmpty() || !dispSuffix.isEmpty()) {
+                        source.sendMessage(Component.text("  Display: ", NamedTextColor.GRAY)
+                                .append(Component.text(dispPrefix + json.get("name").getAsString() + dispSuffix, NamedTextColor.WHITE))
+                                .append(Component.text(" (" + dispGroup + ")", NamedTextColor.DARK_GRAY)));
+                    }
 
                     JsonArray perms = json.getAsJsonArray("effectivePermissions");
                     source.sendMessage(Component.text("  Effective Permissions (" + perms.size() + "):", NamedTextColor.GRAY));
@@ -826,6 +876,9 @@ public class CloudCommand implements SimpleCommand {
                 new Entry("/cloud perms group setdefault <group>", "Set default group"),
                 new Entry("/cloud perms group addparent <group> <parent>", "Add inheritance"),
                 new Entry("/cloud perms group removeparent <group> <parent>", "Remove inheritance"),
+                new Entry("/cloud perms group setprefix <group> <prefix...>", "Set display prefix"),
+                new Entry("/cloud perms group setsuffix <group> <suffix...>", "Set display suffix"),
+                new Entry("/cloud perms group setpriority <group> <number>", "Set display priority"),
                 new Entry("/cloud perms user info <uuid|player>", "Player permissions"),
                 new Entry("/cloud perms user addgroup <uuid|player> <group>", "Assign group"),
                 new Entry("/cloud perms user removegroup <uuid|player> <group>", "Remove group")

@@ -26,6 +26,10 @@ public final class EventRegistry {
         register(PlayerConnectedEvent.TYPE, PlayerConnectedEvent.class, PlayerConnectedEvent::new);
         register(PlayerDisconnectedEvent.TYPE, PlayerDisconnectedEvent.class, PlayerDisconnectedEvent::new);
         register(ServiceMessageEvent.TYPE, ServiceMessageEvent.class, ServiceMessageEvent::new);
+        register(TabListUpdatedEvent.TYPE, TabListUpdatedEvent.class, TabListUpdatedEvent::new);
+        register(MotdUpdatedEvent.TYPE, MotdUpdatedEvent.class, MotdUpdatedEvent::new);
+        register(PlayerTabUpdatedEvent.TYPE, PlayerTabUpdatedEvent.class, PlayerTabUpdatedEvent::new);
+        register(ChatFormatUpdatedEvent.TYPE, ChatFormatUpdatedEvent.class, ChatFormatUpdatedEvent::new);
     }
 
     private static <T extends TypedEvent> void register(String type, Class<T> clazz, Function<NimbusEvent, T> factory) {
