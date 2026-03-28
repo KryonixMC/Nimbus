@@ -2,5 +2,6 @@ rootProject.name = "nimbus"
 
 include("nimbus-core")
 include("nimbus-sdk")
-include("nimbus-cloud-plugin")
+include("nimbus-bridge")
 include("nimbus-signs")
+include("nimbus-npc")

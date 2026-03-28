@@ -43,10 +43,10 @@ dependencies {
 
 // Embed the Velocity cloud plugin JAR (shadow, includes SDK) as a resource
 val pluginJar = tasks.register("copyPluginJar", Copy::class) {
-    dependsOn(project(":nimbus-cloud-plugin").tasks.named("shadowJar"))
-    from(project(":nimbus-cloud-plugin").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    dependsOn(project(":nimbus-bridge").tasks.named("shadowJar"))
+    from(project(":nimbus-bridge").tasks.named("shadowJar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
-    rename { "nimbus-cloud.jar" }
+    rename { "nimbus-bridge.jar" }
 }
 
 // Embed the SDK JAR as a resource so Nimbus can auto-deploy it to backend servers
@@ -65,14 +65,22 @@ val signsJar = tasks.register("copySignsJar", Copy::class) {
     rename { "nimbus-signs.jar" }
 }
 
+// Embed the NPC plugin JAR as a resource (extracted at runtime to plugins/)
+val npcJar = tasks.register("copyNpcJar", Copy::class) {
+    dependsOn(project(":nimbus-npc").tasks.named("shadowJar"))
+    from(project(":nimbus-npc").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-npc.jar" }
+}
+
 tasks.processResources {
-    dependsOn(pluginJar, sdkJar, signsJar)
+    dependsOn(pluginJar, sdkJar, signsJar, npcJar)
 }
 
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
-    dependsOn(pluginJar, sdkJar, signsJar)
+    dependsOn(pluginJar, sdkJar, signsJar, npcJar)
 }
 
 kotlin {

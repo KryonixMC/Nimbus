@@ -140,10 +140,7 @@ fun nimbusMain() = runBlocking {
         logger.info("Cleared temp directory: {}", tempDir)
     }
 
-    // Migrate old .hub-deployed marker to .nimbus-plugins
-    migratePluginTracking(globalProxyTemplateDir)
-
-    // Deploy Nimbus Hub plugin to global_proxy (always overwrite for updates)
+    // Deploy Nimbus Bridge plugin to global_proxy (always overwrite for updates)
     deployHubPlugin(globalProxyTemplateDir)
 
     // Deploy Nimbus SDK plugin to global (all backend servers: Paper, Purpur, etc.)
@@ -288,37 +285,6 @@ fun nimbusMain() = runBlocking {
 }
 
 /**
- * Migrates old `.hub-deployed` marker to the new `.nimbus-plugins` tracking file.
- */
-private fun migratePluginTracking(globalProxyDir: NioPath) {
-    val oldMarker = globalProxyDir.resolve(".hub-deployed")
-    if (!oldMarker.exists()) return
-
-    val trackingFile = globalProxyDir.resolve(".nimbus-plugins")
-    if (!trackingFile.exists()) {
-        Files.write(trackingFile, listOf("nimbus-cloud.jar"))
-        logger.debug("Migrated .hub-deployed to .nimbus-plugins")
-    }
-
-    // Rename old nimbus-hub.jar → nimbus-cloud.jar
-    val oldJar = globalProxyDir.resolve("plugins/nimbus-hub.jar")
-    if (oldJar.exists()) {
-        Files.delete(oldJar)
-        logger.debug("Removed old nimbus-hub.jar (replaced by nimbus-cloud.jar)")
-    }
-
-    // Clean up old plugin data directory
-    val oldDataDir = globalProxyDir.resolve("plugins/nimbus-hub")
-    val newDataDir = globalProxyDir.resolve("plugins/nimbus-cloud")
-    if (oldDataDir.exists() && !newDataDir.exists()) {
-        Files.move(oldDataDir, newDataDir)
-        logger.debug("Migrated plugin data directory nimbus-hub → nimbus-cloud")
-    }
-
-    Files.delete(oldMarker)
-}
-
-/**
  * Tracks deployed plugins in `.nimbus-plugins`.
  * If a plugin was deployed before but the JAR is missing → user removed it → skip.
  * If a plugin was never deployed → deploy and track.
@@ -364,7 +330,7 @@ private fun deployPlugin(globalProxyDir: NioPath, fileName: String, resourcePath
 }
 
 private fun deployHubPlugin(globalProxyDir: NioPath) {
-    deployPlugin(globalProxyDir, "nimbus-cloud.jar", "plugins/nimbus-cloud.jar")
+    deployPlugin(globalProxyDir, "nimbus-bridge.jar", "plugins/nimbus-bridge.jar")
 }
 
 private fun deploySdkPlugin(globalDir: NioPath) {
@@ -378,7 +344,7 @@ private fun deployBridgeConfig(globalProxyDir: NioPath, config: NimbusConfig) {
     }
 
     // Write bridge.json to the plugin's data directory
-    val pluginDataDir = globalProxyDir.resolve("plugins").resolve("nimbus-cloud")
+    val pluginDataDir = globalProxyDir.resolve("plugins").resolve("nimbus-bridge")
     if (!pluginDataDir.exists()) pluginDataDir.createDirectories()
 
     val bridgeConfig = pluginDataDir.resolve("bridge.json")
@@ -405,7 +371,8 @@ private fun extractOptionalPlugins(pluginsDir: NioPath) {
 
     val optionalPlugins = mapOf(
         "nimbus-sdk.jar" to "plugins/nimbus-sdk.jar",
-        "nimbus-signs.jar" to "plugins/nimbus-signs.jar"
+        "nimbus-signs.jar" to "plugins/nimbus-signs.jar",
+        "nimbus-npc.jar" to "plugins/nimbus-npc.jar"
     )
 
     for ((fileName, resourcePath) in optionalPlugins) {

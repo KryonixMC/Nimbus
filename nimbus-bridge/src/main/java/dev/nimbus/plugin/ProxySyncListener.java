@@ -146,7 +146,7 @@ public class ProxySyncListener {
         fetchPlayerDisplayInfo(player.getUniqueId());
 
         // Delay slightly to ensure tab list is ready
-        server.getScheduler().buildTask(server.getPluginManager().getPlugin("nimbus-cloud").orElse(null), () -> {
+        server.getScheduler().buildTask(server.getPluginManager().getPlugin("nimbus-bridge").orElse(null), () -> {
             applyTabList(player);
             applyPlayerDisplayName(player);
         }).delay(500, TimeUnit.MILLISECONDS).schedule();
@@ -156,7 +156,7 @@ public class ProxySyncListener {
     public void onServerConnected(ServerPostConnectEvent event) {
         // Re-apply when switching servers (server/group placeholders change)
         Player player = event.getPlayer();
-        server.getScheduler().buildTask(server.getPluginManager().getPlugin("nimbus-cloud").orElse(null), () -> {
+        server.getScheduler().buildTask(server.getPluginManager().getPlugin("nimbus-bridge").orElse(null), () -> {
             applyTabList(player);
             applyPlayerDisplayName(player);
         }).delay(250, TimeUnit.MILLISECONDS).schedule();

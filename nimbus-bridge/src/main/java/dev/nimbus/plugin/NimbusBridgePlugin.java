@@ -22,20 +22,20 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 @Plugin(
-    id = "nimbus-cloud",
-    name = "Nimbus Cloud",
+    id = "nimbus-bridge",
+    name = "Nimbus Bridge",
     version = "0.2.0",
     description = "Hub commands & Cloud Bridge for Nimbus networks",
     authors = {"Nimbus"}
 )
-public class NimbusCloudPlugin {
+public class NimbusBridgePlugin {
 
     private final ProxyServer server;
     private final Logger logger;
     private final Path dataDirectory;
 
     @Inject
-    public NimbusCloudPlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
+    public NimbusBridgePlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
         this.server = server;
         this.logger = logger;
         this.dataDirectory = dataDirectory;
@@ -53,7 +53,7 @@ public class NimbusCloudPlugin {
                 .build();
             commandManager.register(meta, hubCommand);
         }
-        logger.info("Nimbus Cloud plugin loaded — /hub, /lobby, /l registered");
+        logger.info("Nimbus Bridge loaded — /hub, /lobby, /l registered");
 
         // Register /cloud bridge command (if bridge config exists)
         registerBridge(commandManager);
