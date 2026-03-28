@@ -1,6 +1,7 @@
 package dev.nimbus.setup
 
 import dev.nimbus.config.ServerSoftware
+import dev.nimbus.console.ConsoleFormatter
 import dev.nimbus.console.ConsoleFormatter.BOLD
 import dev.nimbus.console.ConsoleFormatter.CYAN
 import dev.nimbus.console.ConsoleFormatter.DIM
@@ -54,15 +55,8 @@ class SetupWizard(
 
             val w = terminal.writer()
 
-            // Print the box banner
-            w.println()
-            w.println("${DIM}           .         .    .${RESET}")
-            w.println("${DIM}     .  _____  .  _____${RESET}")
-            w.println("${DIM}   ___/       \\__/      \\___${RESET}")
-            w.println("${DIM}  /${RESET}    ${BOLD}N I M B U S${RESET}          ${DIM}\\${RESET}")
-            w.println("${DIM} |${RESET}      ${BOLD}C L O U D${RESET}    ${CYAN}☁${RESET}      ${DIM}|${RESET}")
-            w.println("${DIM}  \\________________________/${RESET}")
-            w.println()
+            // Print the banner
+            w.print(ConsoleFormatter.banner(""))
             w.println("  ${DIM}Let's get your cloud ready.$RESET")
             w.println()
             w.flush()
@@ -232,9 +226,9 @@ class SetupWizard(
             }
 
             w.println()
-            w.println("  $GRAY────────────────────────────────────────$RESET")
+            w.println(ConsoleFormatter.separator(40))
             w.println("  ${GREEN}${BOLD}Setup complete!$RESET ${DIM}${groups.size + 1} group(s) configured.$RESET")
-            w.println("  $GRAY────────────────────────────────────────$RESET")
+            w.println(ConsoleFormatter.separator(40))
             w.println()
 
             return promptYesNo(terminal, "  Start Nimbus now?", true)

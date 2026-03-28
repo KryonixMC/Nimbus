@@ -21,15 +21,12 @@ class ShutdownCommand(
             return
         }
 
-        println()
         println(ConsoleFormatter.warn("Initiating graceful shutdown..."))
-        println(ConsoleFormatter.colorize(
-            "Stopping ${services.size} service(s)...", ConsoleFormatter.DIM
-        ))
+        println(ConsoleFormatter.colorize("Stopping ${services.size} service(s)...", ConsoleFormatter.DIM))
 
         try {
             serviceManager.stopAll()
-            println(ConsoleFormatter.success("All services stopped. Goodbye."))
+            println("${ConsoleFormatter.success("All services stopped.")} ${ConsoleFormatter.DIM}Goodbye.${ConsoleFormatter.RESET}")
         } catch (e: Exception) {
             println(ConsoleFormatter.error("Error during shutdown: ${e.message}"))
             println(ConsoleFormatter.warn("Forcing exit."))

@@ -36,9 +36,8 @@ class GroupsCommand(
             )
         }
 
-        println()
+        println(ConsoleFormatter.header("Groups"))
         println(ConsoleFormatter.formatTable(headers, rows))
-        println()
-        println(ConsoleFormatter.colorize("Total: ${groups.size} group(s)", ConsoleFormatter.DIM))
+        println(ConsoleFormatter.colorize("${groups.size} group(s)", ConsoleFormatter.DIM))
     }
 }

@@ -139,6 +139,11 @@ private fun NimbusEvent.toEventMessage(): EventMessage {
             timestamp = timestamp.toString(),
             data = mapOf("reason" to reason)
         )
+        is NimbusEvent.ApiWarning -> EventMessage(
+            type = "API_WARNING",
+            timestamp = timestamp.toString(),
+            data = mapOf("message" to message)
+        )
         is NimbusEvent.ApiError -> EventMessage(
             type = "API_ERROR",
             timestamp = timestamp.toString(),

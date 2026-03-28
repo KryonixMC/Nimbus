@@ -35,17 +35,17 @@ class ReloadCommand(
 
         val loadedGroups = groupManager.getAllGroups()
         println(ConsoleFormatter.success("Loaded ${configs.size} group configuration(s)."))
-        println()
 
         // Show instance count per group
         for (group in loadedGroups.sortedBy { it.name }) {
             val instances = registry.getByGroup(group.name).size
+            val icon = if (instances > 0) "${ConsoleFormatter.GREEN}●${ConsoleFormatter.RESET}" else "${ConsoleFormatter.DIM}○${ConsoleFormatter.RESET}"
             val countText = if (instances > 0) {
                 ConsoleFormatter.colorize("$instances running", ConsoleFormatter.GREEN)
             } else {
                 ConsoleFormatter.colorize("0 running", ConsoleFormatter.DIM)
             }
-            println("  ${ConsoleFormatter.colorize(group.name, ConsoleFormatter.BOLD)}  $countText")
+            println("$icon ${ConsoleFormatter.colorize(group.name, ConsoleFormatter.BOLD)}  $countText")
         }
 
         // Warn about groups with running services that were removed from config

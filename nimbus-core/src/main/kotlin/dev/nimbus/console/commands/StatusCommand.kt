@@ -21,23 +21,19 @@ class StatusCommand(
         val allServices = registry.getAll()
         val groups = groupManager.getAllGroups()
 
-        println()
-        println(ConsoleFormatter.colorize("  Network: ${config.network.name}", ConsoleFormatter.BOLD))
-        println(ConsoleFormatter.colorize("-".repeat(60), ConsoleFormatter.DIM))
+        println(ConsoleFormatter.header("Network: ${config.network.name}"))
 
         // Summary line
         val readyCount = allServices.count { it.state == ServiceState.READY }
         val totalPlayers = allServices.sumOf { it.playerCount }
         println(
-            "  Services: ${ConsoleFormatter.success("$readyCount ready")} / " +
-                    "${allServices.size} total    " +
-                    "Players: ${ConsoleFormatter.colorize("$totalPlayers", ConsoleFormatter.BOLD)}"
+            "${ConsoleFormatter.colorize("Services:", ConsoleFormatter.DIM)} ${ConsoleFormatter.success("$readyCount ready")} ${ConsoleFormatter.colorize("/ ${allServices.size} total", ConsoleFormatter.DIM)}    " +
+                    "${ConsoleFormatter.colorize("Players:", ConsoleFormatter.DIM)} ${ConsoleFormatter.colorize("$totalPlayers", ConsoleFormatter.BOLD)}"
         )
-        println()
 
         // Per-group overview
         if (groups.isEmpty()) {
-            println(ConsoleFormatter.warn("  No groups configured."))
+            println(ConsoleFormatter.warn("No groups configured."))
         } else {
             val headers = listOf("GROUP", "TYPE", "INSTANCES", "MIN/MAX", "PLAYERS", "STATUS")
             val rows = groups.sortedBy { it.name }.map { group ->
@@ -68,19 +64,9 @@ class StatusCommand(
             println(ConsoleFormatter.formatTable(headers, rows))
         }
 
-        // Memory bar
-        println()
+        // Capacity bar
         val maxServices = config.controller.maxServices
         val usedSlots = allServices.size
-        val barWidth = 30
-        val filled = if (maxServices > 0) (usedSlots.toDouble() / maxServices * barWidth).toInt() else 0
-        val bar = buildString {
-            append("  Capacity: [")
-            append(ConsoleFormatter.colorize("#".repeat(filled.coerceAtMost(barWidth)), ConsoleFormatter.GREEN))
-            append(ConsoleFormatter.colorize("-".repeat((barWidth - filled).coerceAtLeast(0)), ConsoleFormatter.DIM))
-            append("] $usedSlots/$maxServices services")
-        }
-        println(bar)
-        println()
+        println("${ConsoleFormatter.colorize("Capacity:", ConsoleFormatter.DIM)} ${ConsoleFormatter.progressBar(usedSlots, maxServices)} $usedSlots/$maxServices services")
     }
 }

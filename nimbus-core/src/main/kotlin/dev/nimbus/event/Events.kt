@@ -23,5 +23,6 @@ sealed class NimbusEvent {
     // API lifecycle
     data class ApiStarted(val bind: String, val port: Int) : NimbusEvent()
     data class ApiStopped(val reason: String = "shutdown") : NimbusEvent()
+    data class ApiWarning(val message: String) : NimbusEvent()
     data class ApiError(val error: String) : NimbusEvent()
 }

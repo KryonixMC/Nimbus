@@ -139,23 +139,18 @@ class NimbusConsole(
         if (warnings.isEmpty()) return
         val w = terminal.writer()
 
-        w.println()
         for (warning in warnings) {
             val (icon, color) = when (warning.level) {
-                ServiceManager.CompatWarning.Level.ERROR -> "!!!" to ConsoleFormatter.RED
-                ServiceManager.CompatWarning.Level.WARN -> " ! " to ConsoleFormatter.YELLOW
-                ServiceManager.CompatWarning.Level.INFO -> " i " to ConsoleFormatter.CYAN
+                ServiceManager.CompatWarning.Level.ERROR -> "[!]" to ConsoleFormatter.RED
+                ServiceManager.CompatWarning.Level.WARN -> "[!]" to ConsoleFormatter.YELLOW
+                ServiceManager.CompatWarning.Level.INFO -> "[i]" to ConsoleFormatter.CYAN
             }
 
-            val bar = "$color${"━".repeat(60)}${ConsoleFormatter.RESET}"
-            w.println(bar)
-            w.println("$color${ConsoleFormatter.BOLD}[$icon] ${warning.title}${ConsoleFormatter.RESET}")
+            w.print("$color$icon${ConsoleFormatter.RESET} ")
+            w.print("$color${ConsoleFormatter.BOLD}${warning.title}${ConsoleFormatter.RESET}")
             if (warning.detail.isNotEmpty()) {
-                for (line in warning.detail.lines()) {
-                    w.println("$color  $line${ConsoleFormatter.RESET}")
-                }
+                w.print(" ${ConsoleFormatter.DIM}— ${warning.detail.lines().joinToString(" ")}${ConsoleFormatter.RESET}")
             }
-            w.println(bar)
             w.println()
         }
         w.flush()
@@ -185,7 +180,7 @@ class NimbusConsole(
     suspend fun start() {
         if (!::terminal.isInitialized) init()
 
-        val prompt = "${ConsoleFormatter.colorize("nimbus", ConsoleFormatter.CYAN)} > "
+        val prompt = "${ConsoleFormatter.BRIGHT_CYAN}${ConsoleFormatter.BOLD}nimbus${ConsoleFormatter.RESET} ${ConsoleFormatter.CYAN}»${ConsoleFormatter.RESET} "
         var running = true
 
         while (running) {

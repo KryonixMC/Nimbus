@@ -45,18 +45,7 @@ class ApiCommand(
             token = api.token()
         )
 
-        println(ConsoleFormatter.info("Starting REST API on ${config.bind}:${config.port}..."))
         api.startWithConfig(config)
-
-        if (api.isRunning) {
-            println(ConsoleFormatter.success("REST API started on http://${config.bind}:${config.port}"))
-            if (config.token.isBlank()) {
-                println(ConsoleFormatter.warn("Warning: No auth token set — API is open!"))
-                println(ConsoleFormatter.info("Set [api] token in nimbus.toml for security."))
-            }
-        } else {
-            println(ConsoleFormatter.error("Failed to start REST API — check logs for details"))
-        }
     }
 
     private fun stopApi() {
@@ -66,21 +55,22 @@ class ApiCommand(
         }
 
         api.stop()
-        println(ConsoleFormatter.success("REST API stopped"))
     }
 
     private fun printStatus() {
+        println(ConsoleFormatter.header("REST API"))
         if (api.isRunning) {
-            println(ConsoleFormatter.success("REST API: RUNNING"))
-            println("  Endpoint:  http://${api.currentBind}:${api.currentPort}")
-            println("  Auth:      ${if (api.token().isNotBlank()) "Bearer token" else ConsoleFormatter.warn("NONE (open)")}")
-            println("  Health:    http://${api.currentBind}:${api.currentPort}/api/health")
-            println("  Events:    ws://${api.currentBind}:${api.currentPort}/api/events")
+            println("${ConsoleFormatter.success("●")} Status:    ${ConsoleFormatter.success("RUNNING")}")
+            println("${ConsoleFormatter.colorize("Endpoint:", ConsoleFormatter.DIM)}  ${ConsoleFormatter.CYAN}http://${api.currentBind}:${api.currentPort}${ConsoleFormatter.RESET}")
+            println("${ConsoleFormatter.colorize("Auth:", ConsoleFormatter.DIM)}      ${if (api.token().isNotBlank()) "Bearer token" else ConsoleFormatter.warn("NONE (open)")}")
+            println("${ConsoleFormatter.colorize("Health:", ConsoleFormatter.DIM)}    ${ConsoleFormatter.CYAN}http://${api.currentBind}:${api.currentPort}/api/health${ConsoleFormatter.RESET}")
+            println("${ConsoleFormatter.colorize("Events:", ConsoleFormatter.DIM)}    ${ConsoleFormatter.CYAN}ws://${api.currentBind}:${api.currentPort}/api/events${ConsoleFormatter.RESET}")
         } else {
-            println(ConsoleFormatter.warn("REST API: STOPPED"))
-            println("  ${ConsoleFormatter.info("Use 'api start' to launch or set [api] enabled = true in nimbus.toml")}")
+            println("${ConsoleFormatter.DIM}○${ConsoleFormatter.RESET} Status:    ${ConsoleFormatter.warn("STOPPED")}")
+            println(ConsoleFormatter.colorize("Use 'api start' to launch or set [api] enabled = true in nimbus.toml", ConsoleFormatter.DIM))
         }
     }
+
 
     private fun showToken() {
         val token = api.token()

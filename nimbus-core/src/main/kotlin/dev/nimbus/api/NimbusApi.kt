@@ -73,6 +73,9 @@ class NimbusApi(
 
             scope.launch {
                 eventBus.emit(NimbusEvent.ApiStarted(apiConfig.bind, apiConfig.port))
+                if (apiConfig.token.isBlank()) {
+                    eventBus.emit(NimbusEvent.ApiWarning("No auth token set — API is open! Set [api] token in nimbus.toml"))
+                }
             }
         } catch (e: Exception) {
             logger.error("Failed to start REST API: {}", e.message)

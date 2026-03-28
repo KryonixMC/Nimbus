@@ -58,9 +58,8 @@ class PlayersCommand(
             )
         }
 
-        println()
+        println(ConsoleFormatter.header("Players"))
         println(ConsoleFormatter.formatTable(headers, rows))
-        println()
-        println(ConsoleFormatter.colorize("Total: ${players.size} player(s) online", ConsoleFormatter.DIM))
+        println(ConsoleFormatter.colorize("${players.size} player(s) online", ConsoleFormatter.DIM))
     }
 }

@@ -37,9 +37,8 @@ class ListCommand(
             )
         }
 
-        println()
+        println(ConsoleFormatter.header("Services"))
         println(ConsoleFormatter.formatTable(headers, rows))
-        println()
-        println(ConsoleFormatter.colorize("Total: ${services.size} service(s)", ConsoleFormatter.DIM))
+        println(ConsoleFormatter.colorize("${services.size} service(s)", ConsoleFormatter.DIM))
     }
 }

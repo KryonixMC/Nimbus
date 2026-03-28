@@ -31,28 +31,23 @@ class InfoCommand(
         val services = registry.getByGroup(groupName)
         val totalPlayers = services.sumOf { it.playerCount }
 
-        println()
-        println(ConsoleFormatter.colorize("  Group: ${group.name}", ConsoleFormatter.BOLD))
-        println(ConsoleFormatter.colorize("-".repeat(50), ConsoleFormatter.DIM))
-        println()
+        println(ConsoleFormatter.header("Group: ${group.name}"))
 
         fun field(label: String, value: String) {
-            val padded = label.padEnd(24)
-            println("  ${ConsoleFormatter.colorize(padded, ConsoleFormatter.CYAN)}$value")
+            val padded = label.padEnd(22)
+            println("  ${ConsoleFormatter.colorize(padded, ConsoleFormatter.DIM)}$value")
         }
 
-        field("Type", def.type.name)
-        field("Software", def.software.name)
+        field("Type", ConsoleFormatter.colorize(def.type.name, ConsoleFormatter.CYAN))
+        field("Software", ConsoleFormatter.colorize(def.software.name, ConsoleFormatter.CYAN))
         field("Version", def.version)
-        field("Template", def.template.ifEmpty { "(default)" })
-        println()
+        field("Template", def.template.ifEmpty { ConsoleFormatter.colorize("(default)", ConsoleFormatter.DIM) })
 
-        println(ConsoleFormatter.colorize("  Resources", ConsoleFormatter.BOLD))
+        println(ConsoleFormatter.section("Resources"))
         field("Memory", def.resources.memory)
         field("Max Players", def.resources.maxPlayers.toString())
-        println()
 
-        println(ConsoleFormatter.colorize("  Scaling", ConsoleFormatter.BOLD))
+        println(ConsoleFormatter.section("Scaling"))
         field("Min Instances", def.scaling.minInstances.toString())
         field("Max Instances", def.scaling.maxInstances.toString())
         field("Players/Instance", def.scaling.playersPerInstance.toString())
@@ -60,27 +55,23 @@ class InfoCommand(
         if (def.scaling.idleTimeout > 0) {
             field("Idle Timeout", "${def.scaling.idleTimeout}ms")
         }
-        println()
 
-        println(ConsoleFormatter.colorize("  Lifecycle", ConsoleFormatter.BOLD))
-        field("Stop on Empty", if (def.lifecycle.stopOnEmpty) "yes" else "no")
-        field("Restart on Crash", if (def.lifecycle.restartOnCrash) "yes" else "no")
+        println(ConsoleFormatter.section("Lifecycle"))
+        field("Stop on Empty", if (def.lifecycle.stopOnEmpty) ConsoleFormatter.success("yes") else ConsoleFormatter.colorize("no", ConsoleFormatter.DIM))
+        field("Restart on Crash", if (def.lifecycle.restartOnCrash) ConsoleFormatter.success("yes") else ConsoleFormatter.colorize("no", ConsoleFormatter.DIM))
         field("Max Restarts", def.lifecycle.maxRestarts.toString())
-        println()
 
-        println(ConsoleFormatter.colorize("  JVM Args", ConsoleFormatter.BOLD))
+        println(ConsoleFormatter.section("JVM Args"))
         if (def.jvm.args.isEmpty()) {
-            println("  (none)")
+            println("  ${ConsoleFormatter.colorize("(none)", ConsoleFormatter.DIM)}")
         } else {
             for (arg in def.jvm.args) {
                 println("  ${ConsoleFormatter.colorize(arg, ConsoleFormatter.DIM)}")
             }
         }
-        println()
 
-        println(ConsoleFormatter.colorize("  Runtime", ConsoleFormatter.BOLD))
-        field("Running Instances", services.size.toString())
-        field("Total Players", totalPlayers.toString())
-        println()
+        println(ConsoleFormatter.section("Runtime"))
+        field("Running Instances", if (services.isNotEmpty()) ConsoleFormatter.success(services.size.toString()) else ConsoleFormatter.colorize("0", ConsoleFormatter.DIM))
+        field("Total Players", if (totalPlayers > 0) ConsoleFormatter.colorize("$totalPlayers", ConsoleFormatter.BOLD) else ConsoleFormatter.colorize("0", ConsoleFormatter.DIM))
     }
 }

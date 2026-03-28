@@ -48,7 +48,7 @@ class CommandDispatcher {
         val command = commands[commandName]
         if (command == null) {
             println(ConsoleFormatter.error("Unknown command: $commandName") +
-                    " " + ConsoleFormatter.colorize("Type 'help' for available commands.", ConsoleFormatter.DIM))
+                    " ${ConsoleFormatter.DIM}— type ${ConsoleFormatter.CYAN}help${ConsoleFormatter.DIM} for available commands.${ConsoleFormatter.RESET}")
             return true
         }
 

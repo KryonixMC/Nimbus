@@ -23,7 +23,7 @@ class ScreenSession {
         writer.println()
         writer.println(ConsoleFormatter.info("Attached to $serviceName") +
                 " " + ConsoleFormatter.colorize("(ESC or Ctrl+Q to detach)", ConsoleFormatter.DIM))
-        writer.println(ConsoleFormatter.colorize("-".repeat(60), ConsoleFormatter.DIM))
+        writer.println(ConsoleFormatter.separator())
         writer.flush()
 
         val reader = terminal.reader()
@@ -80,7 +80,7 @@ class ScreenSession {
         } finally {
             terminal.setAttributes(previousAttributes)
             writer.println()
-            writer.println(ConsoleFormatter.colorize("-".repeat(60), ConsoleFormatter.DIM))
+            writer.println(ConsoleFormatter.separator())
             writer.println(ConsoleFormatter.info("Detached from $serviceName"))
             writer.flush()
         }

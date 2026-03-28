@@ -16,28 +16,24 @@ class HelpCommand(
         if (args.isNotEmpty()) {
             val cmd = dispatcher.getCommand(args[0])
             if (cmd != null) {
-                println(ConsoleFormatter.colorize(cmd.name, ConsoleFormatter.BOLD) +
-                        " - ${cmd.description}")
-                println(ConsoleFormatter.colorize("  Usage: ${cmd.usage}", ConsoleFormatter.DIM))
+                println("${ConsoleFormatter.colorize(cmd.name, "${ConsoleFormatter.BOLD}${ConsoleFormatter.BRIGHT_CYAN}")} ${ConsoleFormatter.DIM}— ${cmd.description}${ConsoleFormatter.RESET}")
+                println(ConsoleFormatter.colorize("Usage: ${cmd.usage}", ConsoleFormatter.DIM))
             } else {
                 println(ConsoleFormatter.error("Unknown command: ${args[0]}"))
             }
             return
         }
 
-        println()
-        println(ConsoleFormatter.colorize("Available Commands", ConsoleFormatter.BOLD))
-        println(ConsoleFormatter.colorize("-".repeat(40), ConsoleFormatter.DIM))
+        println(ConsoleFormatter.header("Commands"))
 
         val commands = dispatcher.getCommands()
         val maxLen = commands.maxOfOrNull { it.name.length } ?: 0
 
         for (cmd in commands) {
             val padded = cmd.name.padEnd(maxLen + 2)
-            println("  ${ConsoleFormatter.colorize(padded, ConsoleFormatter.CYAN)}${cmd.description}")
+            println("${ConsoleFormatter.colorize(padded, ConsoleFormatter.CYAN)}${ConsoleFormatter.DIM}${cmd.description}${ConsoleFormatter.RESET}")
         }
 
-        println()
         println(ConsoleFormatter.colorize("Type 'help <command>' for detailed usage.", ConsoleFormatter.DIM))
     }
 }

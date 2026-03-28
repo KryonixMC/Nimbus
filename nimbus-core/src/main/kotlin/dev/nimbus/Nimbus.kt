@@ -99,7 +99,7 @@ fun main() = runBlocking {
     val scalingJob = scalingEngine.start()
     logger.info("Scaling engine started (interval: {}ms)", config.controller.heartbeatInterval)
 
-    // Start REST API if enabled
+    // Create REST API (started after console.init() so events are visible)
     val api = NimbusApi(
         config = config,
         registry = registry,
@@ -109,7 +109,6 @@ fun main() = runBlocking {
         scope = scope,
         groupsDir = groupsDir
     )
-    api.start()
 
     // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -141,6 +140,9 @@ fun main() = runBlocking {
         api = api
     )
     console.init()
+
+    // Start REST API after console init so the event is visible
+    api.start()
 
     // Check for compatibility issues and print warnings to console
     console.printCompatWarnings(serviceManager.checkCompatibility())
