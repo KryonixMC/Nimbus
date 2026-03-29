@@ -81,16 +81,16 @@ placement_strategy = "least-services"
 
 ### 2. Set up an agent node
 
-Copy `nimbus-agent/build/libs/nimbus-agent-0.1.0-all.jar` to each worker machine. Then either run the interactive wizard:
+Copy `nimbus-agent/build/libs/nimbus-agent-&lt;version&gt;-all.jar` to each worker machine. Then either run the interactive wizard:
 
 ```bash
-java -jar nimbus-agent-0.1.0-all.jar
+java -jar nimbus-agent-&lt;version&gt;-all.jar
 ```
 
 Or pass everything via CLI flags:
 
 ```bash
-java -jar nimbus-agent-0.1.0-all.jar \
+java -jar nimbus-agent-&lt;version&gt;-all.jar \
   --controller ws://10.0.0.1:8443/cluster \
   --token your-secret-token \
   --name worker-1 \
@@ -107,7 +107,20 @@ token = "your-secret-token"
 node_name = "worker-1"
 max_memory = "16G"
 max_services = 10
+
+# Optional: specify paths to Java installations.
+# Leave empty for auto-detection / auto-download from Adoptium.
+[java]
+java_8 = ""
+java_11 = ""
+java_16 = ""
+java_17 = ""
+java_21 = ""
 ```
+
+::: tip JDK Auto-Resolution
+Agent nodes automatically detect installed JDKs and download missing versions from Adoptium when needed. You only need to configure the `[java]` section if you want to override the auto-detected paths.
+:::
 
 ### 3. Verify the connection
 

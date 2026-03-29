@@ -5,15 +5,21 @@ Lightweight, console-only Minecraft cloud system. Manages dynamic server instanc
 ## Build & Run
 
 ```bash
-./gradlew shadowJar                    # Fat JAR → nimbus-core/build/libs/nimbus-core-0.1.0-all.jar
+./gradlew shadowJar                    # Fat JAR → nimbus-core/build/libs/nimbus-core-<version>-all.jar
 ./gradlew :nimbus-core:compileKotlin   # Quick compile check
-java -jar nimbus-core/build/libs/nimbus-core-0.1.0-all.jar
+java -jar nimbus-core/build/libs/nimbus-core-<version>-all.jar
 ```
+
+Version is defined once in `gradle.properties` (`nimbusVersion=x.y.z`).
 
 ## Modules
 
 - `nimbus-core` — Main application (entry point: `dev.nimbus.NimbusKt`)
+- `nimbus-agent` — Remote agent node for multi-node clusters
+- `nimbus-protocol` — Shared cluster message types
 - `nimbus-bridge` — Velocity plugin: hub commands + cloud bridge (Java, auto-embedded as resource `nimbus-bridge.jar` during build)
+- `nimbus-sdk` — Paper server SDK (auto-deployed to backend servers)
+- `nimbus-signs` — Paper signs plugin for server selectors
 
 ## Tech Stack
 

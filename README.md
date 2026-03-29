@@ -55,8 +55,8 @@ git clone https://github.com/jonax1337/Nimbus.git
 cd Nimbus
 ./gradlew shadowJar
 
-# Output: nimbus-core/build/libs/nimbus-core-0.1.0-all.jar
-java -jar nimbus-core/build/libs/nimbus-core-0.1.0-all.jar
+# Output: nimbus-core/build/libs/nimbus-core-<version>-all.jar
+java -jar nimbus-core/build/libs/nimbus-core-<version>-all.jar
 ```
 
 ## Architecture

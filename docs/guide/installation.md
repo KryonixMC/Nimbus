@@ -52,7 +52,7 @@ Clone the repository and build the fat JAR:
 The output JAR will be at:
 
 ```
-nimbus-core/build/libs/nimbus-core-0.1.0-all.jar
+nimbus-core/build/libs/nimbus-core-&lt;version&gt;-all.jar
 ```
 
 ::: tip Quick compile check
@@ -80,9 +80,9 @@ Copy the JAR to your desired directory and run it:
   </div>
   <pre class="terminal-body">
 <span class="t-dim">$</span> mkdir my-network
-<span class="t-dim">$</span> cp nimbus-core/build/libs/nimbus-core-0.1.0-all.jar my-network/
+<span class="t-dim">$</span> cp nimbus-core/build/libs/nimbus-core-&lt;version&gt;-all.jar my-network/
 <span class="t-dim">$</span> cd my-network
-<span class="t-dim">$</span> java -jar nimbus-core-0.1.0-all.jar
+<span class="t-dim">$</span> java -jar nimbus-core-&lt;version&gt;-all.jar
 </pre>
 </div>
 
@@ -98,7 +98,7 @@ After the setup wizard completes, your directory will look like this:
 
 ```
 my-network/
-├── nimbus-core-0.1.0-all.jar    # The Nimbus application
+├── nimbus-core-&lt;version&gt;-all.jar    # The Nimbus application
 ├── config/                       # All configuration files
 │   ├── nimbus.toml               #   Main configuration
 │   ├── groups/                   #   Server group definitions

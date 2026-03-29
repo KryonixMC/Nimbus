@@ -11,7 +11,7 @@ Run the JAR file:
     <span class="terminal-title">nimbus</span>
   </div>
   <pre class="terminal-body">
-<span class="t-dim">$</span> java -jar nimbus-core-0.1.0-all.jar
+<span class="t-dim">$</span> java -jar nimbus-core-&lt;version&gt;-all.jar
 </pre>
 </div>
 
