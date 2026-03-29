@@ -1,6 +1,6 @@
 # nimbus.toml Reference
 
-The main configuration file for Nimbus. Located at the root of your Nimbus installation directory. If this file does not exist on first launch, Nimbus uses built-in defaults for all options.
+The main configuration file for Nimbus. Located at `config/nimbus.toml` inside your Nimbus installation directory. If this file does not exist on first launch, Nimbus uses built-in defaults for all options.
 
 ::: tip
 After editing `nimbus.toml`, restart Nimbus for changes to take effect. Group configs can be hot-reloaded with the `reload` command, but main config changes require a restart.

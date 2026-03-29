@@ -184,7 +184,7 @@ class ImportCommand(
         // Step 11: Write group TOML
         w.println()
         writeGroupToml(groupName, info, minInstances, maxInstances, memory, isStatic)
-        w.println("${GREEN}✓$RESET groups/${groupName.lowercase()}.toml")
+        w.println("${GREEN}✓$RESET config/groups/${groupName.lowercase()}.toml")
 
         // Step 12: Reload
         val configs = ConfigLoader.loadGroupConfigs(groupsDir)

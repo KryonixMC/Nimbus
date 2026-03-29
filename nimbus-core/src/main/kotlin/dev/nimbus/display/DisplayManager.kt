@@ -13,7 +13,7 @@ import kotlin.io.path.writeText
 /**
  * Manages display configs for groups (signs + NPCs).
  * Auto-generates a config per group on first load.
- * Configs live in the `displays/` directory at Nimbus root.
+ * Configs live in the `config/modules/display/` directory.
  */
 class DisplayManager(private val displaysDir: Path) {
 

@@ -336,7 +336,7 @@ Install <span class="t-cyan">ViaRewind</span>? <span class="t-dim">(1.7/1.8 clie
 <span class="t-bold">Downloading files...</span>
 <span class="t-dim">↓</span> Paper 1.21.4 <span class="t-green">✓</span>
 <span class="t-dim">↓</span> ViaBackwards <span class="t-green">✓</span>
-<span class="t-green">✓</span> groups/skywars.toml
+<span class="t-green">✓</span> config/groups/skywars.toml
 <span class="t-green">✓</span> Group configs reloaded
 <span class="t-green t-bold">Group 'SkyWars' created!</span>
 Start an instance now? <span class="t-dim">[Y/n]</span><span class="t-dim">:</span> <span class="t-bold">y</span>
@@ -379,7 +379,7 @@ Memory per instance <span class="t-dim">[1G]</span><span class="t-dim">:</span> 
 <span class="t-bold">Downloading files...</span>
 <span class="t-dim">↓</span> Fabric 0.16.9 for MC 1.21.4 <span class="t-green">✓</span>
 <span class="t-dim">↓</span> FabricProxy-Lite <span class="t-green">✓</span>
-<span class="t-green">✓</span> groups/survival.toml
+<span class="t-green">✓</span> config/groups/survival.toml
 <span class="t-green">✓</span> Group configs reloaded
 <span class="t-green t-bold">Group 'Survival' created!</span>
 Start an instance now? <span class="t-dim">[Y/n]</span><span class="t-dim">:</span> <span class="t-bold">y</span>
@@ -428,7 +428,7 @@ Max instances <span class="t-dim">[1]</span><span class="t-dim">:</span> <span c
 <span class="t-green">✓</span> 42 mods downloaded
 <span class="t-dim">↓</span> Configs & overrides <span class="t-green">✓</span>
 <span class="t-dim">↓</span> Proxy mods <span class="t-green">✓</span>
-<span class="t-green">✓</span> groups/adrenaserver.toml
+<span class="t-green">✓</span> config/groups/adrenaserver.toml
 <span class="t-green">✓</span> Group configs reloaded
 <span class="t-green t-bold">Modpack 'Adrenaserver' imported as group 'Adrenaserver'!</span>
 Start an instance now? <span class="t-dim">[Y/n]</span><span class="t-dim">:</span> <span class="t-bold">y</span>

@@ -103,7 +103,7 @@ When the target is offline:
 
 ### Display config integration
 
-Signs pull their line templates and state labels from the [Display system](/config/display). Each group can have custom sign lines defined in `displays/<group>.toml`:
+Signs pull their line templates and state labels from the [Display system](/config/display). Each group can have custom sign lines defined in `config/modules/display/<group>.toml`:
 
 ```toml
 [sign]

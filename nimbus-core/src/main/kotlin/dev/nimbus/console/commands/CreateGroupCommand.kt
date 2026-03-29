@@ -210,7 +210,7 @@ class CreateGroupCommand(
             // Step 10: Write TOML
             w.println()
             writeGroupToml(groupName, software, version, modloaderVersion, customJarName, minInstances, maxInstances, memory, isStatic)
-            w.println("${GREEN}✓$RESET groups/${groupName.lowercase()}.toml")
+            w.println("${GREEN}✓$RESET config/groups/${groupName.lowercase()}.toml")
 
             // Step 11: Reload
             val configs = ConfigLoader.loadGroupConfigs(groupsDir)

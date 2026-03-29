@@ -67,7 +67,7 @@ class ApiCommand(
             println("${ConsoleFormatter.colorize("Events:", ConsoleFormatter.DIM)}    ${ConsoleFormatter.CYAN}ws://${api.currentBind}:${api.currentPort}/api/events${ConsoleFormatter.RESET}")
         } else {
             println("${ConsoleFormatter.DIM}○${ConsoleFormatter.RESET} Status:    ${ConsoleFormatter.warn("STOPPED")}")
-            println(ConsoleFormatter.colorize("Use 'api start' to launch or set [api] enabled = true in nimbus.toml", ConsoleFormatter.DIM))
+            println(ConsoleFormatter.colorize("Use 'api start' to launch or set [api] enabled = true in config/nimbus.toml", ConsoleFormatter.DIM))
         }
     }
 
@@ -76,7 +76,7 @@ class ApiCommand(
         val token = api.token()
         if (token.isBlank()) {
             println(ConsoleFormatter.warn("No API token configured"))
-            println(ConsoleFormatter.info("Set [api] token = \"your-secret\" in nimbus.toml"))
+            println(ConsoleFormatter.info("Set [api] token = \"your-secret\" in config/nimbus.toml"))
         } else {
             // Show first 4 and last 4 chars, mask the rest
             val masked = if (token.length > 8) {

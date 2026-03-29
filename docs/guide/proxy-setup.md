@@ -15,7 +15,7 @@ You never need to manually edit `velocity.toml` -- Nimbus manages it entirely.
 
 ## Proxy group configuration
 
-Create a proxy group in `groups/proxy.toml`:
+Create a proxy group in `config/groups/proxy.toml`:
 
 ```toml
 [group]
@@ -146,7 +146,7 @@ Updates are downloaded and staged automatically, but only take effect on the nex
 2. **Compare** — If the latest version matches your current version, nothing happens
 3. **Download** — If a new version is found, the JAR is downloaded to the proxy template directory
 4. **Stage** — For **static** proxy instances, the new JAR is copied into the working directory
-5. **Persist** — The version in `groups/proxy.toml` is updated automatically so the change survives restarts
+5. **Persist** — The version in `config/groups/proxy.toml` is updated automatically so the change survives restarts
 6. **Notify** — Events are emitted for monitoring and integrations
 
 ### Events
@@ -178,7 +178,7 @@ If the download fails (network issue, API outage), Nimbus silently keeps the old
 
 Nimbus provides centralized configuration for tab lists, MOTD, and chat formatting that is synced to all proxy instances in real-time via the API and WebSocket events.
 
-Configuration is stored in `proxy/proxy.toml`:
+Configuration is stored in `config/modules/syncproxy/proxy.toml`:
 
 ### Tab list
 

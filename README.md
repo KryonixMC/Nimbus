@@ -79,7 +79,7 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ## Configuration
 
 <details>
-<summary><b>nimbus.toml</b> — Main Config</summary>
+<summary><b>config/nimbus.toml</b> — Main Config</summary>
 
 ```toml
 [network]
@@ -104,7 +104,7 @@ logs = "logs"
 </details>
 
 <details>
-<summary><b>groups/lobby.toml</b> — Group Config</summary>
+<summary><b>config/groups/lobby.toml</b> — Group Config</summary>
 
 ```toml
 [group]

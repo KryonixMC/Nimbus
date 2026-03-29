@@ -73,7 +73,8 @@ fun nimbusMain() = runBlocking {
 
     // Rotate latest.log → YYYY-MM-DD-N.log.gz (Minecraft-style)
     LogRotation.rotate(baseDir.resolve("logs"))
-    val groupsDir = baseDir.resolve("groups")
+    val configDir = baseDir.resolve("config")
+    val groupsDir = configDir.resolve("groups")
 
     // Shared SoftwareResolver instance (used by SetupWizard, NimbusConsole, VelocityUpdater)
     val softwareResolver = SoftwareResolver()
@@ -89,7 +90,7 @@ fun nimbusMain() = runBlocking {
     }
 
     // Load main config
-    val configPath = baseDir.resolve("nimbus.toml")
+    val configPath = configDir.resolve("nimbus.toml")
     var config = try {
         if (configPath.exists()) {
             ConfigLoader.loadNimbusConfig(configPath)
@@ -131,11 +132,12 @@ fun nimbusMain() = runBlocking {
     val globalProxyTemplateDir = templatesDir.resolve("global_proxy")
 
     val permissionsDir = baseDir.resolve("permissions")
-    val displaysDir = baseDir.resolve("displays")
-    val proxyDir = baseDir.resolve("proxy")
+    val modulesDir = configDir.resolve("modules")
+    val displaysDir = modulesDir.resolve("display")
+    val proxyDir = modulesDir.resolve("syncproxy")
 
     listOf(
-        templatesDir, staticDir, tempDir, logsDir, groupsDir, permissionsDir, displaysDir, proxyDir,
+        templatesDir, staticDir, tempDir, logsDir, configDir, groupsDir, permissionsDir, modulesDir, displaysDir, proxyDir,
         globalTemplateDir, globalTemplateDir.resolve("plugins"),
         globalProxyTemplateDir, globalProxyTemplateDir.resolve("plugins")
     ).forEach { dir ->

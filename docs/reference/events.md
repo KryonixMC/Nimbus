@@ -655,7 +655,7 @@ Emitted for API-related warnings (e.g., no auth token configured).
   "type": "API_WARNING",
   "timestamp": "2025-01-15T08:00:00.000Z",
   "data": {
-    "message": "No auth token set — API is open! Set [api] token in nimbus.toml"
+    "message": "No auth token set — API is open! Set [api] token in config/nimbus.toml"
   }
 }
 ```

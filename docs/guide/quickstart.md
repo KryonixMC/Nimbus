@@ -47,7 +47,7 @@ The wizard asks for your network name. This is used in proxy MOTD and branding:
 </div>
 
 ::: tip
-You can change this later in `nimbus.toml` under `[network]`.
+You can change this later in `config/nimbus.toml` under `[network]`.
 :::
 
 ## 3. Proxy Setup
@@ -184,10 +184,10 @@ The wizard writes all configuration files:
   </div>
   <pre class="terminal-body">
   <span class="t-cyan">[5]</span> <span class="t-bold">Saving configuration</span>
-  <span class="t-green">+</span> nimbus.toml
-  <span class="t-green">+</span> groups/proxy.toml
-  <span class="t-green">+</span> groups/lobby.toml
-  <span class="t-green">+</span> groups/bedwars.toml
+  <span class="t-green">+</span> config/nimbus.toml
+  <span class="t-green">+</span> config/groups/proxy.toml
+  <span class="t-green">+</span> config/groups/lobby.toml
+  <span class="t-green">+</span> config/groups/bedwars.toml
 <span class="t-dim">────────────────────────────────────────</span>
   <span class="t-green t-bold">Setup complete!</span> <span class="t-dim">3 group(s) configured.</span>
 <span class="t-dim">────────────────────────────────────────</span>
@@ -222,7 +222,7 @@ Open Minecraft and add a server:
 - You'll be connected to the Velocity proxy and sent to `Lobby-1` automatically
 
 ::: warning Port conflicts
-If port 25565 is already in use (e.g., by another Minecraft server), Nimbus will fail to bind the proxy. Stop the conflicting server first, or change the proxy port in `groups/proxy.toml`.
+If port 25565 is already in use (e.g., by another Minecraft server), Nimbus will fail to bind the proxy. Stop the conflicting server first, or change the proxy port in `config/groups/proxy.toml`.
 :::
 
 ## 11. Explore the Console
@@ -334,7 +334,7 @@ This launches a guided setup for a new server group, similar to the setup wizard
 3. Configure scaling rules (min/max instances, players per instance)
 4. Set memory allocation
 5. Download the server JAR automatically
-6. Write the group config to `groups/skywars.toml`
+6. Write the group config to `config/groups/skywars.toml`
 7. Start the minimum instances
 
 ## Next Steps
@@ -342,6 +342,6 @@ This launches a guided setup for a new server group, similar to the setup wizard
 Now that your network is running:
 
 - **[Core Concepts](./concepts.md)** — Understand groups, services, templates, and scaling
-- **[Configuration](../config/nimbus-toml.md)** — Customize `nimbus.toml` and group configs
+- **[Configuration](../config/nimbus-toml.md)** — Customize `config/nimbus.toml` and group configs
 - **[Commands](../reference/commands.md)** — Full console command reference
 - **[API Reference](../reference/api.md)** — REST API and WebSocket documentation

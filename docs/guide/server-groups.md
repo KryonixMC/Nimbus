@@ -55,10 +55,10 @@ It prompts for name, software, version, type, memory, and scaling parameters, th
 
 ### Manual TOML file
 
-Create a file in the `groups/` directory named after your group (lowercase):
+Create a file in the `config/groups/` directory named after your group (lowercase):
 
 ```
-groups/bedwars.toml
+config/groups/bedwars.toml
 ```
 
 Full example:
@@ -239,7 +239,7 @@ nimbus> reload
 ```
 
 This picks up:
-- New group files added to `groups/`
+- New group files added to `config/groups/`
 - Changes to existing group configurations
 - Updated permission and display configs
 

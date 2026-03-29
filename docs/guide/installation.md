@@ -99,11 +99,15 @@ After the setup wizard completes, your directory will look like this:
 ```
 my-network/
 ├── nimbus-core-0.1.0-all.jar    # The Nimbus application
-├── nimbus.toml                   # Main configuration
-├── groups/                       # Server group definitions
-│   ├── proxy.toml                #   Velocity proxy group
-│   ├── lobby.toml                #   Lobby server group
-│   └── bedwars.toml              #   (example game mode)
+├── config/                       # All configuration files
+│   ├── nimbus.toml               #   Main configuration
+│   ├── groups/                   #   Server group definitions
+│   │   ├── proxy.toml            #     Velocity proxy group
+│   │   ├── lobby.toml            #     Lobby server group
+│   │   └── bedwars.toml          #     (example game mode)
+│   └── modules/                  #   Module-specific configs
+│       ├── display/              #     Sign/NPC display configs
+│       └── syncproxy/            #     Proxy sync data
 ├── templates/                    # File templates for services
 │   ├── global/                   #   Shared across all backends
 │   │   └── plugins/              #     nimbus-sdk.jar (auto-deployed)
@@ -116,9 +120,7 @@ my-network/
 │   ├── static/                   #   Persistent services (proxy)
 │   └── temp/                     #   Ephemeral services (lobbies, games)
 ├── permissions/                  # Permission data files
-├── displays/                     # Sign/NPC display configs
 ├── plugins/                      # Optional plugins (SDK, Signs)
-├── proxy/                        # Proxy sync data
 └── logs/                         # Log files
     └── latest.log                #   Current session log
 ```
@@ -127,7 +129,8 @@ my-network/
 
 | Directory | Purpose |
 |---|---|
-| `groups/` | One TOML file per server group. This is where you define your server types. |
+| `config/nimbus.toml` | Main configuration file for Nimbus. |
+| `config/groups/` | One TOML file per server group. This is where you define your server types. |
 | `templates/` | Template files that get copied to each service instance on startup. |
 | `templates/global/` | Files shared across **all backend servers** (Paper, Purpur, etc.). |
 | `templates/global_proxy/` | Files shared across **all proxy servers** (Velocity). |

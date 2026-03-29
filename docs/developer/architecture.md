@@ -57,7 +57,7 @@ When Nimbus starts (`Nimbus.kt` → `nimbusMain()`), components are initialized 
 ```
 1. Log rotation           → Rotate latest.log to dated archives
 2. Setup wizard           → First-run interactive setup (if needed)
-3. Config loading         → Parse nimbus.toml + groups/*.toml
+3. Config loading         → Parse config/nimbus.toml + config/groups/*.toml
 4. API token generation   → Auto-generate if missing
 5. Directory creation     → Ensure templates/, services/, logs/, etc. exist
 6. Plugin deployment      → Extract nimbus-bridge.jar, nimbus-sdk.jar

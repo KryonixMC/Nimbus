@@ -1,6 +1,6 @@
 # REST API Reference
 
-Nimbus exposes a REST API (v0.2) built on Ktor. The API is optional and can be enabled in `nimbus.toml` or started at runtime with the `api start` console command.
+Nimbus exposes a REST API (v0.2) built on Ktor. The API is optional and can be enabled in `config/nimbus.toml` or started at runtime with the `api start` console command.
 
 ## Authentication
 
@@ -10,7 +10,7 @@ All endpoints except `/api/health` require a Bearer token:
 Authorization: Bearer <your-token>
 ```
 
-Configure the token in `nimbus.toml`:
+Configure the token in `config/nimbus.toml`:
 
 ```toml
 [api]
@@ -1230,7 +1230,7 @@ Read the current Nimbus configuration. The API token is never exposed.
 
 ### PATCH /api/config
 
-Update non-critical configuration fields. Only `networkName`, `consoleColored`, and `consoleLogEvents` are editable. Changes are written to `nimbus.toml`.
+Update non-critical configuration fields. Only `networkName`, `consoleColored`, and `consoleLogEvents` are editable. Changes are written to `config/nimbus.toml`.
 
 **Request Body:**
 

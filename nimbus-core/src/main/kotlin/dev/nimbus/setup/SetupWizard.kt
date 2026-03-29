@@ -41,7 +41,7 @@ class SetupWizard(
     private var velocityVersions: SoftwareResolver.VersionList? = null
 
     fun isSetupNeeded(): Boolean {
-        val groupsDir = baseDir.resolve("groups")
+        val groupsDir = baseDir.resolve("config").resolve("groups")
         if (!groupsDir.exists() || !groupsDir.isDirectory()) return true
         return groupsDir.listDirectoryEntries("*.toml").isEmpty()
     }
@@ -213,14 +213,14 @@ class SetupWizard(
             w.println()
 
             writeNimbusToml(networkName)
-            w.println("  ${GREEN}+$RESET nimbus.toml")
+            w.println("  ${GREEN}+$RESET config/nimbus.toml")
 
             writeProxyToml(velocityVersion)
-            w.println("  ${GREEN}+$RESET groups/proxy.toml")
+            w.println("  ${GREEN}+$RESET config/groups/proxy.toml")
 
             for (group in groups) {
                 writeGroupToml(group.name, group.software, group.version, group.minInstances, group.maxInstances, group.memory)
-                w.println("  ${GREEN}+$RESET groups/${group.name.lowercase()}.toml")
+                w.println("  ${GREEN}+$RESET config/groups/${group.name.lowercase()}.toml")
             }
 
             w.println()
@@ -416,7 +416,9 @@ class SetupWizard(
             |port = 8080
             |token = "$token"
         """.trimMargin() + "\n"
-        Files.writeString(baseDir.resolve("nimbus.toml"), content)
+        val configDir = baseDir.resolve("config")
+        Files.createDirectories(configDir)
+        Files.writeString(configDir.resolve("nimbus.toml"), content)
     }
 
     private fun generateToken(): String {
@@ -426,7 +428,7 @@ class SetupWizard(
     }
 
     private fun writeProxyToml(velocityVersion: String) {
-        val groupsDir = baseDir.resolve("groups")
+        val groupsDir = baseDir.resolve("config").resolve("groups")
         Files.createDirectories(groupsDir)
         val content = """
             |[group]
@@ -454,7 +456,7 @@ class SetupWizard(
         name: String, software: ServerSoftware, version: String,
         minInstances: Int, maxInstances: Int, memory: String
     ) {
-        val groupsDir = baseDir.resolve("groups")
+        val groupsDir = baseDir.resolve("config").resolve("groups")
         Files.createDirectories(groupsDir)
         val templateName = name.lowercase()
         val isLobby = name.contains("lobby", ignoreCase = true)

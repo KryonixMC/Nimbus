@@ -7,7 +7,7 @@ import kotlin.io.path.*
 
 /**
  * Manages proxy sync configuration (tab list + MOTD) and per-player tab overrides.
- * Config is stored as TOML in `proxy/proxy.toml`. Player overrides are ephemeral (in-memory only).
+ * Config is stored as TOML in `config/modules/syncproxy/proxy.toml`. Player overrides are ephemeral (in-memory only).
  */
 class ProxySyncManager(private val proxyDir: Path) {
 

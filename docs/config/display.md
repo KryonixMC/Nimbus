@@ -1,10 +1,10 @@
 # Display System
 
-The display system controls how server groups appear on signs and NPCs in your lobby. Each non-proxy group gets an auto-generated display config in the `displays/` directory that you can customize.
+The display system controls how server groups appear on signs and NPCs in your lobby. Each non-proxy group gets an auto-generated display config in the `config/modules/display/` directory that you can customize.
 
 ## Overview
 
-- Display configs are stored as TOML files in `displays/` (e.g., `displays/BedWars.toml`)
+- Display configs are stored as TOML files in `config/modules/display/` (e.g., `config/modules/display/BedWars.toml`)
 - Configs are auto-generated for new groups (proxy groups are excluded)
 - Placeholders like `{name}`, `{players}`, and `{state}` are replaced at runtime
 - State labels map internal states (e.g., `READY`) to display-friendly names (e.g., `ONLINE`)
@@ -160,7 +160,7 @@ Services with custom states like `INGAME` or `ENDING` are excluded from the scal
 
 ## Auto-Generation
 
-When groups are loaded, Nimbus checks the `displays/` directory and creates a default display config for any group that doesn't have one. Proxy groups (Velocity) are skipped since they don't appear on signs or NPCs.
+When groups are loaded, Nimbus checks the `config/modules/display/` directory and creates a default display config for any group that doesn't have one. Proxy groups (Velocity) are skipped since they don't appear on signs or NPCs.
 
 The auto-generated config uses:
 - The group name for all display text
@@ -168,7 +168,7 @@ The auto-generated config uses:
 - An auto-detected NPC item based on the group name
 - Default state labels
 
-To regenerate a display config, delete its file from `displays/` and run the `reload` command.
+To regenerate a display config, delete its file from `config/modules/display/` and run the `reload` command.
 
 ---
 

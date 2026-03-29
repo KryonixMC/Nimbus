@@ -43,8 +43,10 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 
 ## Configuration
 
-- `nimbus.toml` — Main config (network, controller, console, paths, API)
-- `groups/*.toml` — One file per server group (proxy, lobby, game servers)
+- `config/nimbus.toml` — Main config (network, controller, console, paths, API)
+- `config/groups/*.toml` — One file per server group (proxy, lobby, game servers)
+- `config/modules/display/*.toml` — Display configs per group (signs + NPCs)
+- `config/modules/syncproxy/proxy.toml` — Proxy tab list, MOTD, chat sync
 - Config keys use `snake_case`, group/service names use `PascalCase`
 
 ## Key Patterns

@@ -4,10 +4,10 @@ This page explains the fundamental building blocks of Nimbus. Understanding thes
 
 ## Groups
 
-A **group** is a definition for a type of server. It specifies the software, version, resource limits, scaling rules, and lifecycle behavior. Groups are configured as TOML files in the `groups/` directory.
+A **group** is a definition for a type of server. It specifies the software, version, resource limits, scaling rules, and lifecycle behavior. Groups are configured as TOML files in the `config/groups/` directory.
 
 ```
-groups/
+config/groups/
 ├── proxy.toml      # Velocity proxy
 ├── lobby.toml      # Lobby servers
 └── bedwars.toml    # BedWars game servers
