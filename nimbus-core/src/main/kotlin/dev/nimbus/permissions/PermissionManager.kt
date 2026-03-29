@@ -23,8 +23,29 @@ class PermissionManager(private val db: DatabaseManager) {
 
     private suspend fun ensureDefaultGroup() {
         if (groups.isNotEmpty()) return
-        logger.info("No permission groups found — creating default group")
-        createGroup("Default", default = true)
+        logger.info("No permission groups found — creating default groups")
+
+        // Default group for all players
+        val defaultGroup = PermissionGroup(
+            name = "Default",
+            default = true,
+            prefix = "&9[User] &7",
+            priority = 0
+        )
+        groups[defaultGroup.name.lowercase()] = defaultGroup
+        saveGroup(defaultGroup)
+
+        // Admin group with all permissions
+        val adminGroup = PermissionGroup(
+            name = "Admin",
+            prefix = "&c[Admin] &7",
+            priority = 100,
+            permissions = mutableListOf("*")
+        )
+        groups[adminGroup.name.lowercase()] = adminGroup
+        saveGroup(adminGroup)
+
+        logger.info("Created 'Default' (prefix: &9[User] &7) and 'Admin' (prefix: &c[Admin] &7, perm: *) groups")
     }
 
     suspend fun reload() {
@@ -122,7 +143,9 @@ class PermissionManager(private val db: DatabaseManager) {
 
     suspend fun registerPlayer(uuid: String, playerName: String): Boolean {
         val existing = players[uuid]
-        if (existing != null && existing.name == playerName) return false
+        val isNew = existing == null
+
+        if (!isNew && existing!!.name == playerName) return false
 
         players[uuid] = existing?.copy(name = playerName) ?: PlayerEntry(name = playerName)
 
@@ -137,6 +160,16 @@ class PermissionManager(private val db: DatabaseManager) {
                 }
             }
         }
+
+        // Auto-assign new players to the default group
+        if (isNew) {
+            val defaultGroup = getDefaultGroup()
+            if (defaultGroup != null) {
+                setPlayerGroup(uuid, playerName, defaultGroup.name)
+                logger.debug("Auto-assigned player '{}' to default group '{}'", playerName, defaultGroup.name)
+            }
+        }
+
         return true
     }
 
