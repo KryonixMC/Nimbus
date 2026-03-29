@@ -112,6 +112,27 @@ class CommandDispatcher {
                         }
                     }
                 }
+                "update" -> {
+                    when (parts.size) {
+                        2 -> {
+                            // Complete group name
+                            val groups = groupManager?.getAllGroups()?.map { it.name } ?: emptyList()
+                            groups.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                        }
+                        3 -> {
+                            // Complete subcommand: version or software
+                            listOf("version", "software").filter { it.startsWith(argPrefix, ignoreCase = true) }
+                        }
+                        4 -> {
+                            // Complete software names when subcommand is "software"
+                            if (parts[2].lowercase() == "software") {
+                                listOf("paper", "purpur", "forge", "neoforge", "fabric")
+                                    .filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            } else emptyList()
+                        }
+                        else -> emptyList()
+                    }
+                }
                 "api" -> {
                     val subcommands = listOf("start", "stop", "status", "token")
                     subcommands.filter { it.startsWith(argPrefix, ignoreCase = true) }

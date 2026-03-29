@@ -32,7 +32,7 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ├── Nimbus.kt              # Entry point, bootstrap
 ├── api/                   # Ktor REST API + WebSocket (v0.2)
 ├── config/                # TOML config loading (NimbusConfig, GroupConfig)
-├── console/               # JLine3 REPL, CommandDispatcher, 17 commands
+├── console/               # JLine3 REPL, CommandDispatcher, 23 commands
 ├── database/              # Exposed ORM: DatabaseManager, Tables, MetricsCollector
 ├── event/                 # Coroutine-based EventBus + sealed Events
 ├── group/                 # ServerGroup runtime state, GroupManager

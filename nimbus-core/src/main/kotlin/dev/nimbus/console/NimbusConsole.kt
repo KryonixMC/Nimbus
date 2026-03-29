@@ -96,6 +96,7 @@ class NimbusConsole(
             val templatesDir = java.nio.file.Path.of(config.paths.templates)
             dispatcher.register(CreateGroupCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
             dispatcher.register(ImportCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
+            dispatcher.register(UpdateCommand(terminal, groupManager, registry, softwareResolver, groupsDir, templatesDir, this))
         }
         if (groupsDir != null) {
             dispatcher.register(StaticCommand(serviceManager, registry, groupManager, groupsDir))
