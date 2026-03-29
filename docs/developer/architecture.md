@@ -21,7 +21,7 @@ nimbus-core (Controller)
 ├── setup/         → First-run wizard
 ├── permissions/   → Permission system (groups, players, wildcards)
 ├── display/       → Sign/NPC display configs
-├── proxy/         → Proxy sync (tab list, MOTD, chat format)
+├── proxy/         → Proxy sync (tab list, MOTD, chat format, maintenance)
 └── velocity/      → Velocity config generation
 
 nimbus-protocol (Shared Protocol)

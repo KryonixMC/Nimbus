@@ -161,6 +161,26 @@ class CommandDispatcher {
                         else -> emptyList()
                     }
                 }
+                "maintenance" -> {
+                    when (parts.size) {
+                        2 -> {
+                            val options = mutableListOf("on", "off", "list", "add", "remove")
+                            val groups = groupManager?.getAllGroups()?.map { it.name } ?: emptyList()
+                            options.addAll(groups)
+                            options.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                        }
+                        3 -> {
+                            // If second arg is a group name, complete with on/off
+                            val groups = groupManager?.getAllGroups()?.map { it.name } ?: emptyList()
+                            if (parts[1] in groups || groups.any { it.equals(parts[1], ignoreCase = true) }) {
+                                listOf("on", "off").filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                        else -> emptyList()
+                    }
+                }
                 "perms" -> {
                     when (parts.size) {
                         2 -> listOf("group", "user", "reload").filter { it.startsWith(argPrefix, ignoreCase = true) }

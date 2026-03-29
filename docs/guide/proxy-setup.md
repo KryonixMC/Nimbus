@@ -178,9 +178,17 @@ If the download fails (network issue, API outage), Nimbus silently keeps the old
 
 Nimbus provides centralized configuration for tab lists, MOTD, and chat formatting that is synced to all proxy instances in real-time via the API and WebSocket events.
 
-Configuration is stored in `config/modules/syncproxy/proxy.toml`:
+Configuration is split into three files in `config/modules/syncproxy/`:
+
+| File | Purpose |
+|---|---|
+| `tablist.toml` | Tab list header, footer, player name format |
+| `motd.toml` | Server list MOTD + maintenance mode |
+| `chat.toml` | Chat format settings |
 
 ### Tab list
+
+`config/modules/syncproxy/tablist.toml`:
 
 ```toml
 [tablist]
@@ -211,6 +219,8 @@ Nimbus.clearTabName(player.getUniqueId());
 
 ### MOTD
 
+`config/modules/syncproxy/motd.toml`:
+
 ```toml
 [motd]
 line1 = "  <gradient:#58a6ff:#56d4dd:#b392f0><bold>MY NETWORK</bold></gradient>"
@@ -227,6 +237,8 @@ player_count_offset = 0
 
 ### Chat format
 
+`config/modules/syncproxy/chat.toml`:
+
 ```toml
 [chat]
 format = "{prefix}{player}{suffix} <dark_gray>» <gray>{message}"
@@ -237,6 +249,62 @@ Set `enabled = false` to let another plugin handle chat formatting.
 
 ::: tip
 All proxy sync settings can be changed at runtime via the REST API (`PUT /api/proxy/tablist`, `PUT /api/proxy/motd`, `PUT /api/proxy/chat`). Changes are pushed to all proxies instantly via WebSocket.
+:::
+
+### Maintenance mode
+
+Maintenance mode lets you block new player connections without shutting down the network. It is configured in `motd.toml` alongside the regular MOTD:
+
+```toml
+[maintenance]
+enabled = false
+motd_line1 = "  <gradient:#ff6b6b:#ee5a24><bold>MAINTENANCE</bold></gradient>"
+motd_line2 = "  <gray>We are currently performing maintenance.</gray>"
+protocol_text = "Maintenance"
+kick_message = "<red><bold>Maintenance</bold></red>\n<gray>The server is currently under maintenance.\nPlease try again later.</gray>"
+whitelist = []
+```
+
+When global maintenance is enabled:
+- The **MOTD** switches to the maintenance lines
+- The **version protocol** shows a red "x" with the `protocol_text` in the server list
+- New connections are **blocked** — non-whitelisted players receive the `kick_message`
+- Players on the `whitelist` or with the `nimbus.maintenance.bypass` permission can still join
+
+**Group maintenance** prevents players from joining servers of a specific group — useful when updating templates or running tests:
+
+```toml
+[maintenance.groups.BedWars]
+enabled = true
+kick_message = "<red>BedWars is currently under maintenance.</red>"
+```
+
+Players trying to connect to a BedWars server will be sent back to the lobby with the kick message.
+
+Toggle maintenance via the console or in-game:
+
+<div class="terminal">
+  <div class="terminal-header">
+    <span class="terminal-title">nimbus</span>
+  </div>
+  <pre class="terminal-body">
+<span class="t-prompt">nimbus</span> <span class="t-cyan">»</span> maintenance on
+<span class="t-green">✓</span> Global maintenance <span class="t-bold">enabled</span>.
+<span class="t-dim">  Players without bypass will be disconnected by the proxy.</span>
+
+<span class="t-prompt">nimbus</span> <span class="t-cyan">»</span> maintenance BedWars on
+<span class="t-green">✓</span> Group <span class="t-bold">BedWars</span> maintenance <span class="t-bold">enabled</span>.
+<span class="t-dim">  Players will not be able to join BedWars servers.</span>
+
+<span class="t-prompt">nimbus</span> <span class="t-cyan">»</span> maintenance add jonas
+<span class="t-green">✓</span> Added <span class="t-bold">jonas</span> to maintenance whitelist.
+</pre>
+</div>
+
+Or in-game with `/cloud maintenance on`, `/cloud maintenance BedWars on`, etc.
+
+::: tip
+Maintenance state is also available via the REST API at `GET /api/maintenance` and can be toggled with `POST /api/maintenance/global` and `POST /api/maintenance/groups/{name}`.
 :::
 
 ## nimbus-bridge plugin
@@ -262,6 +330,7 @@ The bridge plugin is automatically deployed to all proxy instances. It provides:
 | `/cloud reload` | `nimbus.cloud.reload` | Reload Nimbus config |
 | `/cloud shutdown` | `nimbus.cloud.shutdown` | Shut down the network |
 | `/cloud perms ...` | `nimbus.cloud.perms` | Permission management |
+| `/cloud maintenance ...` | `nimbus.cloud.maintenance` | Toggle maintenance mode |
 
 The base permission `nimbus.cloud` is required to use any `/cloud` subcommand. The `/cloud` command is also aliased as `/nimbus`.
 

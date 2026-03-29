@@ -67,6 +67,10 @@ sealed class NimbusEvent {
     data class LoadBalancerStarted(val bind: String, val port: Int, val strategy: String) : NimbusEvent()
     data class LoadBalancerStopped(val reason: String = "shutdown") : NimbusEvent()
 
+    // Maintenance
+    data class MaintenanceEnabled(val scope: String, val reason: String = "") : NimbusEvent()  // scope = "global" or group name
+    data class MaintenanceDisabled(val scope: String) : NimbusEvent()
+
     // Config
     data class ConfigReloaded(val groupsLoaded: Int) : NimbusEvent()
 

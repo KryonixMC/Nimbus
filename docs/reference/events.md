@@ -578,6 +578,50 @@ Emitted when the chat format configuration is changed.
 
 ---
 
+## Maintenance Events
+
+### MAINTENANCE_ENABLED
+
+Emitted when maintenance mode is enabled globally or for a specific group.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | `"global"` or a group name (e.g. `"BedWars"`) |
+| `reason` | string | Optional reason for enabling maintenance |
+
+```json
+{
+  "type": "MAINTENANCE_ENABLED",
+  "timestamp": "2025-01-15T09:00:00.000Z",
+  "data": {
+    "scope": "global",
+    "reason": "Server update"
+  }
+}
+```
+
+---
+
+### MAINTENANCE_DISABLED
+
+Emitted when maintenance mode is disabled globally or for a specific group.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | `"global"` or a group name (e.g. `"BedWars"`) |
+
+```json
+{
+  "type": "MAINTENANCE_DISABLED",
+  "timestamp": "2025-01-15T09:15:00.000Z",
+  "data": {
+    "scope": "global"
+  }
+}
+```
+
+---
+
 ## Cluster Events
 
 ### NODE_CONNECTED

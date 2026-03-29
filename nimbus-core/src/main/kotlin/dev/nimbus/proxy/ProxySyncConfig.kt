@@ -24,3 +24,24 @@ data class ChatConfig(
     val format: String = "{prefix}{player}{suffix} <dark_gray>» <gray>{message}",
     val enabled: Boolean = true
 )
+
+// ── Maintenance ────────────────────────────────────────────────────
+
+data class MaintenanceConfig(
+    val global: GlobalMaintenanceConfig = GlobalMaintenanceConfig(),
+    val groups: Map<String, GroupMaintenanceConfig> = emptyMap()
+)
+
+data class GlobalMaintenanceConfig(
+    val enabled: Boolean = false,
+    val motdLine1: String = "  <gradient:#ff6b6b:#ee5a24><bold>MAINTENANCE</bold></gradient>",
+    val motdLine2: String = "  <gray>We are currently performing maintenance.</gray>",
+    val protocolText: String = "Maintenance",
+    val kickMessage: String = "<red><bold>Maintenance</bold></red>\n<gray>The server is currently under maintenance.\nPlease try again later.</gray>",
+    val whitelist: List<String> = emptyList()
+)
+
+data class GroupMaintenanceConfig(
+    val enabled: Boolean = false,
+    val kickMessage: String = "<red>This game mode is currently under maintenance.</red>"
+)

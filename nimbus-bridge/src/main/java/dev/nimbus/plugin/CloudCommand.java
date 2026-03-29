@@ -28,26 +28,31 @@ public class CloudCommand implements SimpleCommand {
     private final dev.nimbus.sdk.NimbusClient sdkClient;
 
     private static final Map<String, String> SUBCOMMAND_PERMISSIONS = Map.ofEntries(
-            Map.entry("help",    "nimbus.cloud"),
-            Map.entry("list",    "nimbus.cloud.list"),
-            Map.entry("status",  "nimbus.cloud.status"),
-            Map.entry("start",   "nimbus.cloud.start"),
-            Map.entry("stop",    "nimbus.cloud.stop"),
-            Map.entry("restart", "nimbus.cloud.restart"),
-            Map.entry("exec",    "nimbus.cloud.exec"),
-            Map.entry("players", "nimbus.cloud.players"),
-            Map.entry("send",    "nimbus.cloud.send"),
-            Map.entry("groups",  "nimbus.cloud.groups"),
-            Map.entry("info",    "nimbus.cloud.info"),
-            Map.entry("setstate","nimbus.cloud.setstate"),
-            Map.entry("reload",  "nimbus.cloud.reload"),
-            Map.entry("shutdown","nimbus.cloud.shutdown"),
-            Map.entry("perms",   "nimbus.cloud.perms")
+            Map.entry("help",        "nimbus.cloud"),
+            Map.entry("list",        "nimbus.cloud.list"),
+            Map.entry("status",      "nimbus.cloud.status"),
+            Map.entry("start",       "nimbus.cloud.start"),
+            Map.entry("stop",        "nimbus.cloud.stop"),
+            Map.entry("restart",     "nimbus.cloud.restart"),
+            Map.entry("exec",        "nimbus.cloud.exec"),
+            Map.entry("players",     "nimbus.cloud.players"),
+            Map.entry("send",        "nimbus.cloud.send"),
+            Map.entry("groups",      "nimbus.cloud.groups"),
+            Map.entry("info",        "nimbus.cloud.info"),
+            Map.entry("setstate",    "nimbus.cloud.setstate"),
+            Map.entry("reload",      "nimbus.cloud.reload"),
+            Map.entry("shutdown",    "nimbus.cloud.shutdown"),
+            Map.entry("perms",       "nimbus.cloud.perms"),
+            Map.entry("maintenance", "nimbus.cloud.maintenance")
     );
 
     private static final List<String> SUBCOMMANDS = List.of(
             "help", "list", "status", "start", "stop", "restart",
-            "exec", "players", "send", "groups", "info", "setstate", "reload", "shutdown", "perms"
+            "exec", "players", "send", "groups", "info", "setstate", "reload", "shutdown", "perms", "maintenance"
+    );
+
+    private static final List<String> MAINTENANCE_SUBCMDS = List.of(
+            "status", "on", "off", "list", "add", "remove"
     );
 
     private static final List<String> PERMS_SUBCMDS = List.of("group", "user");
@@ -58,11 +63,16 @@ public class CloudCommand implements SimpleCommand {
     private static final List<String> PERMS_USER_SUBCMDS = List.of("list", "info", "addgroup", "removegroup");
 
     private final com.velocitypowered.api.proxy.ProxyServer proxyServer;
+    private volatile MaintenanceHandler maintenanceHandler;
 
     public CloudCommand(NimbusApiClient api, dev.nimbus.sdk.NimbusClient sdkClient, com.velocitypowered.api.proxy.ProxyServer proxyServer) {
         this.api = api;
         this.sdkClient = sdkClient;
         this.proxyServer = proxyServer;
+    }
+
+    public void setMaintenanceHandler(MaintenanceHandler handler) {
+        this.maintenanceHandler = handler;
     }
 
     @Override
@@ -109,7 +119,8 @@ public class CloudCommand implements SimpleCommand {
             case "setstate"-> handleSetState(invocation, args);
             case "reload"  -> handleReload(invocation);
             case "shutdown"-> handleShutdown(invocation);
-            case "perms"   -> handlePerms(invocation, args);
+            case "perms"       -> handlePerms(invocation, args);
+            case "maintenance" -> handleMaintenance(invocation, args);
         }
     }
 
@@ -133,6 +144,11 @@ public class CloudCommand implements SimpleCommand {
         // Perms subcommand tab completion
         if (sub.equals("perms") && invocation.source().hasPermission("nimbus.cloud.perms")) {
             return suggestPerms(args);
+        }
+
+        // Maintenance subcommand tab completion
+        if (sub.equals("maintenance") && invocation.source().hasPermission("nimbus.cloud.maintenance")) {
+            return suggestMaintenance(args);
         }
 
         // For other subcommands that take service/group names
@@ -161,6 +177,7 @@ public class CloudCommand implements SimpleCommand {
                 new HelpEntry("/cloud send <player> <target>","Transfer a player",         "nimbus.cloud.send"),
                 new HelpEntry("/cloud setstate <svc> <state>", "Set custom state on service","nimbus.cloud.setstate"),
                 new HelpEntry("/cloud perms",                 "Manage permissions",        "nimbus.cloud.perms"),
+                new HelpEntry("/cloud maintenance",           "Toggle maintenance mode",   "nimbus.cloud.maintenance"),
                 new HelpEntry("/cloud reload",                "Reload group configs",      "nimbus.cloud.reload"),
                 new HelpEntry("/cloud shutdown",              "Shutdown the cloud",        "nimbus.cloud.shutdown")
         );
@@ -934,6 +951,261 @@ public class CloudCommand implements SimpleCommand {
             }
         }
         return List.of();
+    }
+
+    // ── Maintenance ────────────────────────────────────────────────────
+
+    private void handleMaintenance(Invocation invocation, String[] args) {
+        var source = invocation.source();
+
+        if (args.length < 2) {
+            sendMaintenanceHelp(source);
+            return;
+        }
+
+        String action = args[1].toLowerCase();
+        switch (action) {
+            case "status" -> handleMaintenanceStatus(source);
+            case "on" -> {
+                if (args.length >= 3) {
+                    // /cloud maintenance on <group>
+                    handleMaintenanceGroupToggle(source, args[2], true);
+                } else {
+                    handleMaintenanceGlobalToggle(source, true);
+                }
+            }
+            case "off" -> {
+                if (args.length >= 3) {
+                    handleMaintenanceGroupToggle(source, args[2], false);
+                } else {
+                    handleMaintenanceGlobalToggle(source, false);
+                }
+            }
+            case "list" -> handleMaintenanceWhitelistList(source);
+            case "add" -> {
+                if (args.length < 3) { source.sendMessage(Component.text("Usage: /cloud maintenance add <player>", NamedTextColor.RED)); return; }
+                handleMaintenanceWhitelistAdd(source, args[2]);
+            }
+            case "remove" -> {
+                if (args.length < 3) { source.sendMessage(Component.text("Usage: /cloud maintenance remove <player>", NamedTextColor.RED)); return; }
+                handleMaintenanceWhitelistRemove(source, args[2]);
+            }
+            default -> {
+                // Could be a group name: /cloud maintenance <group> on|off
+                if (args.length >= 3) {
+                    String groupName = args[1];
+                    String toggle = args[2].toLowerCase();
+                    if (toggle.equals("on")) {
+                        handleMaintenanceGroupToggle(source, groupName, true);
+                    } else if (toggle.equals("off")) {
+                        handleMaintenanceGroupToggle(source, groupName, false);
+                    } else {
+                        sendMaintenanceHelp(source);
+                    }
+                } else {
+                    sendMaintenanceHelp(source);
+                }
+            }
+        }
+    }
+
+    private void handleMaintenanceStatus(com.velocitypowered.api.command.CommandSource source) {
+        api.get("/api/maintenance").thenAccept(result -> {
+            if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
+            JsonObject json = result.asJson();
+            JsonObject global = json.getAsJsonObject("global");
+            boolean globalEnabled = global != null && global.has("enabled") && global.get("enabled").getAsBoolean();
+
+            source.sendMessage(Component.empty());
+            source.sendMessage(Component.text("  Maintenance Mode", NamedTextColor.AQUA).decorate(TextDecoration.BOLD));
+            source.sendMessage(Component.empty());
+            source.sendMessage(
+                    Component.text("  Global: ", NamedTextColor.GRAY)
+                            .append(globalEnabled
+                                    ? Component.text("ENABLED", NamedTextColor.RED).decorate(TextDecoration.BOLD)
+                                    : Component.text("disabled", NamedTextColor.GRAY))
+            );
+
+            if (global != null && global.has("whitelist") && global.get("whitelist").isJsonArray()) {
+                int wlSize = global.getAsJsonArray("whitelist").size();
+                if (wlSize > 0) {
+                    source.sendMessage(Component.text("  Whitelist: ", NamedTextColor.GRAY)
+                            .append(Component.text(wlSize + " player(s)", NamedTextColor.WHITE)));
+                }
+            }
+
+            JsonObject groups = json.getAsJsonObject("groups");
+            if (groups != null && !groups.entrySet().isEmpty()) {
+                source.sendMessage(Component.empty());
+                source.sendMessage(Component.text("  Groups in Maintenance:", NamedTextColor.GRAY));
+                for (var entry : groups.entrySet()) {
+                    JsonObject groupObj = entry.getValue().getAsJsonObject();
+                    if (groupObj.has("enabled") && groupObj.get("enabled").getAsBoolean()) {
+                        source.sendMessage(
+                                Component.text("    ! ", NamedTextColor.YELLOW)
+                                        .append(Component.text(entry.getKey(), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        );
+                    }
+                }
+            }
+            source.sendMessage(Component.empty());
+        });
+    }
+
+    private void handleMaintenanceGlobalToggle(com.velocitypowered.api.command.CommandSource source, boolean enabled) {
+        JsonObject body = new JsonObject();
+        body.addProperty("enabled", enabled);
+
+        source.sendMessage(Component.text(enabled ? "Enabling global maintenance..." : "Disabling global maintenance...", NamedTextColor.GRAY));
+        api.post("/api/maintenance/global", body).thenAccept(result -> {
+            if (result.isSuccess()) {
+                source.sendMessage(Component.text(
+                        enabled ? "Global maintenance enabled." : "Global maintenance disabled.",
+                        enabled ? NamedTextColor.YELLOW : NamedTextColor.GREEN
+                ));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void handleMaintenanceGroupToggle(com.velocitypowered.api.command.CommandSource source, String groupName, boolean enabled) {
+        JsonObject body = new JsonObject();
+        body.addProperty("enabled", enabled);
+
+        source.sendMessage(Component.text(
+                (enabled ? "Enabling" : "Disabling") + " maintenance for " + groupName + "...", NamedTextColor.GRAY));
+        api.post("/api/maintenance/groups/" + groupName, body).thenAccept(result -> {
+            if (result.isSuccess()) {
+                source.sendMessage(Component.text(
+                        groupName + " maintenance " + (enabled ? "enabled." : "disabled."),
+                        enabled ? NamedTextColor.YELLOW : NamedTextColor.GREEN
+                ));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void handleMaintenanceWhitelistList(com.velocitypowered.api.command.CommandSource source) {
+        api.get("/api/maintenance").thenAccept(result -> {
+            if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
+            JsonObject json = result.asJson();
+            JsonObject global = json.getAsJsonObject("global");
+
+            source.sendMessage(Component.text("Maintenance Whitelist", NamedTextColor.AQUA).decorate(TextDecoration.BOLD));
+            if (global == null || !global.has("whitelist") || global.getAsJsonArray("whitelist").isEmpty()) {
+                source.sendMessage(Component.text("  No whitelisted players.", NamedTextColor.GRAY));
+                return;
+            }
+
+            for (var entry : global.getAsJsonArray("whitelist")) {
+                source.sendMessage(
+                        Component.text("  + ", NamedTextColor.GREEN)
+                                .append(Component.text(entry.getAsString(), NamedTextColor.WHITE))
+                );
+            }
+        });
+    }
+
+    private void handleMaintenanceWhitelistAdd(com.velocitypowered.api.command.CommandSource source, String player) {
+        JsonObject body = new JsonObject();
+        body.addProperty("entry", player);
+
+        api.post("/api/maintenance/whitelist", body).thenAccept(result -> {
+            if (result.isSuccess()) {
+                String msg = result.asJson().get("message").getAsString();
+                source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void handleMaintenanceWhitelistRemove(com.velocitypowered.api.command.CommandSource source, String player) {
+        JsonObject body = new JsonObject();
+        body.addProperty("entry", player);
+
+        api.delete("/api/maintenance/whitelist", body).thenAccept(result -> {
+            if (result.isSuccess()) {
+                String msg = result.asJson().get("message").getAsString();
+                source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void sendMaintenanceHelp(com.velocitypowered.api.command.CommandSource source) {
+        source.sendMessage(Component.empty());
+        source.sendMessage(Component.text("  Maintenance Commands", NamedTextColor.AQUA).decorate(TextDecoration.BOLD));
+        source.sendMessage(Component.empty());
+
+        record Entry(String cmd, String desc) {}
+        var entries = List.of(
+                new Entry("/cloud maintenance status",              "Show maintenance status"),
+                new Entry("/cloud maintenance on",                  "Enable global maintenance"),
+                new Entry("/cloud maintenance off",                 "Disable global maintenance"),
+                new Entry("/cloud maintenance on <group>",          "Enable group maintenance"),
+                new Entry("/cloud maintenance off <group>",         "Disable group maintenance"),
+                new Entry("/cloud maintenance list",                "Show whitelisted players"),
+                new Entry("/cloud maintenance add <player>",        "Add player to whitelist"),
+                new Entry("/cloud maintenance remove <player>",     "Remove player from whitelist")
+        );
+
+        for (var entry : entries) {
+            source.sendMessage(
+                    Component.text("  " + entry.cmd(), NamedTextColor.WHITE)
+                            .clickEvent(ClickEvent.suggestCommand(entry.cmd().split(" <")[0]))
+                            .append(Component.text(" — " + entry.desc(), NamedTextColor.GRAY))
+            );
+        }
+        source.sendMessage(Component.empty());
+    }
+
+    private List<String> suggestMaintenance(String[] args) {
+        // args[0] = "maintenance", args[1] = subcommand, ...
+        if (args.length == 2) {
+            String partial = args[1].toLowerCase();
+            return MAINTENANCE_SUBCMDS.stream().filter(s -> s.startsWith(partial)).toList();
+        }
+        if (args.length == 3) {
+            String sub = args[1].toLowerCase();
+            String partial = args[2].toLowerCase();
+
+            if (sub.equals("on") || sub.equals("off")) {
+                // Suggest group names for /cloud maintenance on|off <group>
+                MaintenanceHandler mh = maintenanceHandler;
+                // We could fetch groups from API, but for now suggest from proxy registered servers
+                return proxyServer.getAllServers().stream()
+                        .map(s -> deriveGroupName(s.getServerInfo().getName()))
+                        .distinct()
+                        .filter(name -> name.toLowerCase().startsWith(partial))
+                        .toList();
+            }
+            if (sub.equals("add") || sub.equals("remove")) {
+                // Suggest online player names
+                return proxyServer.getAllPlayers().stream()
+                        .map(Player::getUsername)
+                        .filter(name -> name.toLowerCase().startsWith(partial))
+                        .toList();
+            }
+        }
+        return List.of();
+    }
+
+    private static String deriveGroupName(String serverName) {
+        int lastDash = serverName.lastIndexOf('-');
+        if (lastDash > 0) {
+            String suffix = serverName.substring(lastDash + 1);
+            try {
+                Integer.parseInt(suffix);
+                return serverName.substring(0, lastDash);
+            } catch (NumberFormatException e) {
+                return serverName;
+            }
+        }
+        return serverName;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

@@ -33,6 +33,9 @@ public class ProxySyncListener {
     private final dev.nimbus.sdk.NimbusEventStream eventStream;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
+    // Maintenance handler (set externally after construction)
+    private volatile MaintenanceHandler maintenanceHandler;
+
     // Tab list config
     private volatile String tabHeader = "";
     private volatile String tabFooter = "";
@@ -63,6 +66,14 @@ public class ProxySyncListener {
         this.logger = logger;
         this.apiClient = apiClient;
         this.eventStream = eventStream;
+    }
+
+    public void setMaintenanceHandler(MaintenanceHandler handler) {
+        this.maintenanceHandler = handler;
+    }
+
+    public MaintenanceHandler getMaintenanceHandler() {
+        return maintenanceHandler;
     }
 
     /**
@@ -174,6 +185,39 @@ public class ProxySyncListener {
         ServerPing ping = event.getPing();
         ServerPing.Builder builder = ping.asBuilder();
 
+        MaintenanceHandler mh = maintenanceHandler;
+        if (mh != null && mh.isGlobalEnabled()) {
+            // Maintenance mode: custom MOTD, fake protocol version, hide player count
+            int online = server.getPlayerCount() + motdPlayerCountOffset;
+            int max = motdMaxPlayers > 0 ? motdMaxPlayers : ping.getPlayers().map(ServerPing.Players::getMax).orElse(0);
+
+            String l1 = replacePlaceholders(mh.getMotdLine1(), null, online, max);
+            String l2 = replacePlaceholders(mh.getMotdLine2(), null, online, max);
+
+            Component description = parse(l1)
+                    .append(Component.newline())
+                    .append(parse(l2));
+
+            builder.description(description);
+
+            // Override version protocol to show maintenance text
+            // Protocol -1 makes the client show a red "x" and the custom version name
+            String protocolText = mh.getProtocolText();
+            // Strip MiniMessage tags for protocol text (it doesn't support them)
+            String cleanProtocolText = protocolText
+                    .replaceAll("<[^>]+>", "")
+                    .replace("&[0-9a-fk-or]", "");
+            if (cleanProtocolText.isEmpty()) cleanProtocolText = "Maintenance";
+            builder.version(new ServerPing.Version(-1, cleanProtocolText));
+
+            // Clear sample players to hide who's online
+            builder.clearSamplePlayers();
+
+            event.setPing(builder.build());
+            return;
+        }
+
+        // Normal mode
         int online = server.getPlayerCount() + motdPlayerCountOffset;
         int max = motdMaxPlayers > 0 ? motdMaxPlayers : ping.getPlayers().map(ServerPing.Players::getMax).orElse(0);
 
@@ -378,6 +422,12 @@ public class ProxySyncListener {
             if (chat != null) {
                 chatFormat = getJsonString(chat, "format", chatFormat);
                 if (chat.has("enabled")) chatEnabled = chat.get("enabled").getAsBoolean();
+            }
+
+            // Load maintenance state from proxy config
+            MaintenanceHandler mh = maintenanceHandler;
+            if (mh != null && json.has("maintenance") && json.get("maintenance").isJsonObject()) {
+                mh.loadFromProxyConfig(json.getAsJsonObject("maintenance"));
             }
 
             logger.info("Loaded proxy sync config from API");

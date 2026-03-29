@@ -107,7 +107,7 @@ my-network/
 │   │   └── bedwars.toml          #     (example game mode)
 │   └── modules/                  #   Module-specific configs
 │       ├── display/              #     Sign/NPC display configs
-│       └── syncproxy/            #     Proxy sync data
+│       └── syncproxy/            #     Proxy sync (MOTD, tab list, chat, maintenance)
 ├── templates/                    # File templates for services
 │   ├── global/                   #   Shared across all backends
 │   │   └── plugins/              #     nimbus-sdk.jar (auto-deployed)

@@ -113,6 +113,9 @@ class NimbusConsole(
         if (permissionManager != null) {
             dispatcher.register(PermsCommand(permissionManager, eventBus))
         }
+        if (proxySyncManager != null) {
+            dispatcher.register(MaintenanceCommand(proxySyncManager, groupManager, eventBus))
+        }
         if (nodeManager != null) {
             dispatcher.register(NodesCommand(nodeManager, registry))
         }

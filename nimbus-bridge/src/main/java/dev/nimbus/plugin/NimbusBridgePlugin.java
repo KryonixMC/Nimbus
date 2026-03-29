@@ -58,8 +58,8 @@ public class NimbusBridgePlugin {
         // Register /cloud bridge command (if bridge config exists)
         registerBridge(commandManager);
 
-        // Register event listeners
-        server.getEventManager().register(this, new ConnectionListener(server, logger));
+        // Register event listeners (maintenance handler may be null if no bridge config)
+        server.getEventManager().register(this, new ConnectionListener(server, logger, () -> maintenanceHandler));
 
         // Register permission provider (if bridge config exists)
         registerPermissionProvider();
@@ -77,14 +77,36 @@ public class NimbusBridgePlugin {
             if (config == null) return;
 
             ensureSharedClients(config);
+
+            // Initialize maintenance handler
+            maintenanceHandler = new MaintenanceHandler(logger);
+            if (cloudCommand != null) {
+                cloudCommand.setMaintenanceHandler(maintenanceHandler);
+            }
+
             proxySyncListener = new ProxySyncListener(server, logger, sharedApiClient, sharedEventStream);
+            proxySyncListener.setMaintenanceHandler(maintenanceHandler);
             proxySyncListener.init();
             server.getEventManager().register(this, proxySyncListener);
 
-            logger.info("Proxy Sync registered (tab list + MOTD)");
+            // Register maintenance event handlers
+            registerMaintenanceEventHandlers();
+
+            logger.info("Proxy Sync registered (tab list + MOTD + maintenance)");
         } catch (Exception e) {
             logger.warn("Failed to register proxy sync: {}", e.getMessage());
         }
+    }
+
+    private void registerMaintenanceEventHandlers() {
+        sharedEventStream.onEvent("MAINTENANCE_ENABLED", e -> {
+            maintenanceHandler.onMaintenanceEnabled(e.getData());
+            // Refresh full state from API for MOTD/protocol/whitelist details
+            maintenanceHandler.refreshFromApi(sharedApiClient);
+        });
+        sharedEventStream.onEvent("MAINTENANCE_DISABLED", e -> {
+            maintenanceHandler.onMaintenanceDisabled(e.getData());
+        });
     }
 
     private void connectSharedEventStream() {
@@ -103,6 +125,8 @@ public class NimbusBridgePlugin {
     private dev.nimbus.sdk.NimbusClient sharedSdkClient;
     private NimbusApiClient sharedApiClient;
     private ProxySyncListener proxySyncListener;
+    private MaintenanceHandler maintenanceHandler;
+    private CloudCommand cloudCommand;
 
     private void ensureSharedClients(BridgeConfig config) {
         if (sharedSdkClient == null) {
@@ -182,7 +206,7 @@ public class NimbusBridgePlugin {
             }
 
             ensureSharedClients(config);
-            CloudCommand cloudCommand = new CloudCommand(sharedApiClient, sharedSdkClient, server);
+            cloudCommand = new CloudCommand(sharedApiClient, sharedSdkClient, server);
 
             // Register /cloud and /nimbus
             for (String alias : new String[]{"cloud", "nimbus"}) {
@@ -212,26 +236,48 @@ public class NimbusBridgePlugin {
 
     /**
      * Handles initial connection (force lobby) and kicked-from-server (fallback to lobby).
+     * Also enforces global and group maintenance mode.
      */
     private static class ConnectionListener {
 
         private final ProxyServer server;
         private final Logger logger;
+        private final java.util.function.Supplier<MaintenanceHandler> maintenanceSupplier;
+        private final net.kyori.adventure.text.minimessage.MiniMessage miniMessage = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage();
 
-        ConnectionListener(ProxyServer server, Logger logger) {
+        ConnectionListener(ProxyServer server, Logger logger, java.util.function.Supplier<MaintenanceHandler> maintenanceSupplier) {
             this.server = server;
             this.logger = logger;
+            this.maintenanceSupplier = maintenanceSupplier;
         }
 
         @Subscribe
         public void onChooseInitialServer(PlayerChooseInitialServerEvent event) {
+            Player player = event.getPlayer();
+
+            // Check global maintenance
+            MaintenanceHandler mh = maintenanceSupplier.get();
+            if (mh != null && mh.isGlobalEnabled()) {
+                // Check bypass: whitelist by name or UUID
+                boolean bypass = mh.isWhitelisted(player.getUsername())
+                        || mh.isWhitelisted(player.getUniqueId().toString())
+                        || player.hasPermission("nimbus.maintenance.bypass");
+                if (!bypass) {
+                    event.setInitialServer(null);
+                    Component kickMsg = parseMiniMessage(mh.getKickMessage());
+                    player.disconnect(kickMsg);
+                    logger.info("Blocked {} from joining (global maintenance)", player.getUsername());
+                    return;
+                }
+            }
+
             Optional<RegisteredServer> lobby = findLobby(server);
             if (lobby.isPresent()) {
                 event.setInitialServer(lobby.get());
             } else {
                 // No lobby available — kick with message
                 event.setInitialServer(null);
-                event.getPlayer().disconnect(
+                player.disconnect(
                     Component.text("No lobby server available. Please try again later.", NamedTextColor.RED)
                 );
             }
@@ -260,6 +306,48 @@ public class NimbusBridgePlugin {
                 Component.text("Connection lost.", NamedTextColor.RED)
             );
             event.setResult(KickedFromServerEvent.DisconnectPlayer.create(reason));
+        }
+
+        @Subscribe
+        public void onServerPreConnect(com.velocitypowered.api.event.player.ServerPreConnectEvent event) {
+            MaintenanceHandler mh = maintenanceSupplier.get();
+            if (mh == null) return;
+
+            Player player = event.getPlayer();
+            var target = event.getOriginalServer();
+            String serverName = target.getServerInfo().getName();
+            String groupName = deriveGroupName(serverName);
+
+            // Check group maintenance
+            if (mh.isGroupInMaintenance(groupName)) {
+                boolean bypass = mh.isWhitelisted(player.getUsername())
+                        || mh.isWhitelisted(player.getUniqueId().toString())
+                        || player.hasPermission("nimbus.maintenance.bypass");
+                if (!bypass) {
+                    event.setResult(com.velocitypowered.api.event.player.ServerPreConnectEvent.ServerResult.denied());
+                    Component msg = parseMiniMessage(mh.getGroupKickMessage(groupName));
+                    player.sendMessage(msg);
+                    logger.info("Blocked {} from joining {} (group {} in maintenance)", player.getUsername(), serverName, groupName);
+                }
+            }
+        }
+
+        private static String deriveGroupName(String serverName) {
+            int lastDash = serverName.lastIndexOf('-');
+            if (lastDash > 0) {
+                String suffix = serverName.substring(lastDash + 1);
+                try {
+                    Integer.parseInt(suffix);
+                    return serverName.substring(0, lastDash);
+                } catch (NumberFormatException e) {
+                    return serverName;
+                }
+            }
+            return serverName;
+        }
+
+        private Component parseMiniMessage(String input) {
+            return miniMessage.deserialize(dev.nimbus.sdk.ColorUtil.translate(input));
         }
     }
 

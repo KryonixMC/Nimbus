@@ -1093,6 +1093,48 @@ With no arguments, shows status and backend proxy table:
 
 ---
 
+### `maintenance`
+
+Toggle maintenance mode for the entire network or individual server groups.
+
+**Syntax:** `maintenance [on|off | <group> on|off | list | add <player> | remove <player>]`
+
+<div class="terminal">
+  <div class="terminal-header">
+    <span class="terminal-title">nimbus</span>
+  </div>
+  <pre class="terminal-body">
+<span class="t-prompt">nimbus</span> <span class="t-cyan">»</span> maintenance
+<span class="t-cyan">── <span class="t-bold" style="color:#c0caf5">Maintenance Mode</span> ──────────────────────────────</span>
+
+  <span class="t-dim">Global          </span><span class="t-dim">disabled</span>
+  <span class="t-dim">Groups          </span><span class="t-dim">none</span>
+</pre>
+</div>
+
+**Subcommands:**
+
+| Command | Description |
+|---|---|
+| `maintenance` | Show current maintenance status |
+| `maintenance on` | Enable global maintenance (blocks new connections) |
+| `maintenance off` | Disable global maintenance |
+| `maintenance <group> on` | Put a specific group in maintenance |
+| `maintenance <group> off` | Remove maintenance from a group |
+| `maintenance list` | Show whitelisted players |
+| `maintenance add <player>` | Add player to maintenance whitelist |
+| `maintenance remove <player>` | Remove player from maintenance whitelist |
+
+**Global maintenance** replaces the MOTD with a maintenance message, sets the version protocol to show a red "x" in the server list, and disconnects non-whitelisted players. Players with the `nimbus.maintenance.bypass` permission or on the whitelist can still join.
+
+**Group maintenance** prevents players from joining servers of that group — useful for template updates or testing. Players are sent back to the lobby with a message.
+
+Configuration is stored in `config/modules/syncproxy/motd.toml` under the `[maintenance]` section.
+
+**Tab completion:** `on`, `off`, `list`, `add`, `remove`, group names.
+
+---
+
 ### `shutdown`
 
 Gracefully shut down all services in order: game servers first, then lobbies, then proxies.

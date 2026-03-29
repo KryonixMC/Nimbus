@@ -32,11 +32,12 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ├── Nimbus.kt              # Entry point, bootstrap
 ├── api/                   # Ktor REST API + WebSocket (v0.2)
 ├── config/                # TOML config loading (NimbusConfig, GroupConfig)
-├── console/               # JLine3 REPL, CommandDispatcher, 23 commands
+├── console/               # JLine3 REPL, CommandDispatcher, 24 commands
 ├── database/              # Exposed ORM: DatabaseManager, Tables, MetricsCollector
 ├── event/                 # Coroutine-based EventBus + sealed Events
 ├── group/                 # ServerGroup runtime state, GroupManager
 ├── scaling/               # ScalingEngine + ScalingRule (auto-scale by player count)
+├── proxy/                 # ProxySyncManager (tab list, MOTD, chat, maintenance)
 ├── service/               # Service lifecycle, ProcessHandle, PortAllocator, ServerListPing
 ├── setup/                 # First-run interactive SetupWizard
 ├── template/              # TemplateManager, ConfigPatcher, SoftwareResolver (auto-download)
@@ -49,7 +50,9 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 - `config/groups/*.toml` — One file per server group (proxy, lobby, game servers)
 - `data/nimbus.db` — SQLite database (default, configurable to MySQL/PostgreSQL)
 - `config/modules/display/*.toml` — Display configs per group (signs + NPCs)
-- `config/modules/syncproxy/proxy.toml` — Proxy tab list, MOTD, chat sync
+- `config/modules/syncproxy/motd.toml` — MOTD + maintenance mode config
+- `config/modules/syncproxy/tablist.toml` — Tab list header, footer, player format
+- `config/modules/syncproxy/chat.toml` — Chat format settings
 - Config keys use `snake_case`, group/service names use `PascalCase`
 
 ## Key Patterns
@@ -72,6 +75,6 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ## API (v0.2)
 
 - Bearer token auth (`Authorization: Bearer <token>`)
-- REST: `/api/services`, `/api/groups`, `/api/status`, `/api/players`, `/api/reload`, `/api/shutdown`
+- REST: `/api/services`, `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/reload`, `/api/shutdown`
 - WebSocket: `/api/events` (live events), `/api/services/{name}/console` (bidirectional)
 - `/api/health` is always public (no auth)

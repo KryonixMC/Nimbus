@@ -83,6 +83,19 @@ All commands require the base permission `nimbus.cloud`. The `/cloud` command is
 | `/cloud perms user addgroup <player> <group>` | `nimbus.cloud.perms` | Add player to group |
 | `/cloud perms user removegroup <player> <group>` | `nimbus.cloud.perms` | Remove player from group |
 
+### Maintenance management
+
+| Command | Permission | Description |
+|---|---|---|
+| `/cloud maintenance status` | `nimbus.cloud.maintenance` | Show maintenance status (global + groups) |
+| `/cloud maintenance on` | `nimbus.cloud.maintenance` | Enable global maintenance |
+| `/cloud maintenance off` | `nimbus.cloud.maintenance` | Disable global maintenance |
+| `/cloud maintenance on <group>` | `nimbus.cloud.maintenance` | Enable maintenance for a group |
+| `/cloud maintenance off <group>` | `nimbus.cloud.maintenance` | Disable maintenance for a group |
+| `/cloud maintenance list` | `nimbus.cloud.maintenance` | Show whitelisted players |
+| `/cloud maintenance add <player>` | `nimbus.cloud.maintenance` | Add player to maintenance whitelist |
+| `/cloud maintenance remove <player>` | `nimbus.cloud.maintenance` | Remove player from whitelist |
+
 ### Hub command
 
 | Command | Aliases | Description |
@@ -122,7 +135,7 @@ Permission changes (via `/cloud perms` or the API) are pushed to all proxies ins
 The bridge handles real-time synchronization of:
 
 ### Tab list
-- Applies header/footer from `config/modules/syncproxy/proxy.toml` to all players
+- Applies header/footer from `config/modules/syncproxy/tablist.toml` to all players
 - Formats player display names using the configured `player_format`
 - Supports per-player overrides via the SDK's `Nimbus.setTabName()`
 - Refreshes periodically (default: every 5 seconds)
@@ -139,12 +152,20 @@ The bridge handles real-time synchronization of:
 - Supports prefix/suffix from permission groups
 - Supports MiniMessage and legacy `&` color codes
 
+### Maintenance mode
+- **Global maintenance**: Overrides the MOTD with a maintenance message, sets the version protocol to show a red "x" in the server list, and disconnects non-whitelisted players on join
+- **Group maintenance**: Blocks players from connecting to servers of a specific group (e.g. during template updates), redirects them back to the lobby
+- Players with `nimbus.maintenance.bypass` permission or on the whitelist can bypass both
+- Configuration is part of `config/modules/syncproxy/motd.toml` under the `[maintenance]` section
+
 ### Real-time updates
 All proxy sync settings are updated in real-time via WebSocket events:
 - `TABLIST_UPDATED` -- Tab config changed
 - `MOTD_UPDATED` -- MOTD config changed
 - `CHAT_FORMAT_UPDATED` -- Chat format changed
 - `PLAYER_TAB_UPDATED` -- Per-player tab override changed
+- `MAINTENANCE_ENABLED` -- Maintenance enabled (global or group)
+- `MAINTENANCE_DISABLED` -- Maintenance disabled (global or group)
 - `PERMISSION_GROUP_UPDATED` -- Permission group changed (re-fetch display info)
 - `PLAYER_PERMISSIONS_UPDATED` -- Player permissions changed
 
@@ -154,9 +175,10 @@ All proxy sync settings are updated in real-time via WebSocket events:
 NimbusBridgePlugin (entry point)
 ├── CloudCommand          Uses NimbusApiClient + NimbusClient (SDK)
 ├── HubCommand            Uses ProxyServer to find lobby
-├── ConnectionListener    Handles initial connect + kick fallback
+├── ConnectionListener    Handles initial connect + kick fallback + maintenance blocking
+├── MaintenanceHandler    Proxy-side maintenance state cache (synced via API + events)
 ├── PermissionListener    Injects NimbusPermissionProvider
-├── ProxySyncListener     Tab list + MOTD + chat sync
+├── ProxySyncListener     Tab list + MOTD + chat sync + maintenance MOTD override
 └── Shared clients:
     ├── NimbusApiClient   HTTP client (bridge-specific, returns Result)
     ├── NimbusClient      SDK HTTP client (shared with CloudCommand)

@@ -201,6 +201,7 @@ class NimbusApi(
                 systemRoutes(config, groupManager, groupsDir, serviceManager, eventBus, scope, startedAt)
                 displayRoutes(displayManager)
                 proxySyncRoutes(proxySyncManager, eventBus)
+                maintenanceRoutes(proxySyncManager, eventBus)
                 fileRoutes(scopeRoots, readOnlyScopes, maxUploadBytes)
                 configRoutes(config, configPath)
                 if (nodeManager != null || loadBalancer != null) {

@@ -295,5 +295,18 @@ private fun NimbusEvent.toEventMessage(): EventMessage {
             timestamp = timestamp.toString(),
             data = mapOf("reason" to reason)
         )
+        is NimbusEvent.MaintenanceEnabled -> EventMessage(
+            type = "MAINTENANCE_ENABLED",
+            timestamp = timestamp.toString(),
+            data = buildMap {
+                put("scope", scope)
+                if (reason.isNotEmpty()) put("reason", reason)
+            }
+        )
+        is NimbusEvent.MaintenanceDisabled -> EventMessage(
+            type = "MAINTENANCE_DISABLED",
+            timestamp = timestamp.toString(),
+            data = mapOf("scope" to scope)
+        )
     }
 }

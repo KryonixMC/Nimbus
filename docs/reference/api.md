@@ -959,6 +959,15 @@ Get the full proxy sync configuration.
   "chat": {
     "format": "%prefix%%player%%suffix% &7>> &f%message%",
     "enabled": true
+  },
+  "maintenance": {
+    "globalEnabled": false,
+    "motdLine1": "  <gradient:#ff6b6b:#ee5a24><bold>MAINTENANCE</bold></gradient>",
+    "motdLine2": "  <gray>We are currently performing maintenance.</gray>",
+    "protocolText": "Maintenance",
+    "kickMessage": "<red><bold>Maintenance</bold></red>...",
+    "whitelist": [],
+    "groups": {}
   }
 }
 ```
@@ -1058,6 +1067,126 @@ Get all player tab list overrides.
     "550e8400-e29b-41d4-a716-446655440000": "&c[Owner] &f%player%"
   },
   "total": 1
+}
+```
+
+---
+
+## Maintenance
+
+Toggle maintenance mode for the entire network or individual server groups.
+
+### GET /api/maintenance
+
+Get full maintenance status (global state + all groups).
+
+**Response:**
+
+```json
+{
+  "global": {
+    "enabled": true,
+    "motdLine1": "  <gradient:#ff6b6b:#ee5a24><bold>MAINTENANCE</bold></gradient>",
+    "motdLine2": "  <gray>We are currently performing maintenance.</gray>",
+    "protocolText": "Maintenance",
+    "kickMessage": "<red><bold>Maintenance</bold></red>\n<gray>Please try again later.</gray>",
+    "whitelist": ["jonas", "admin"]
+  },
+  "groups": {
+    "BedWars": {
+      "enabled": true,
+      "kickMessage": "<red>BedWars is under maintenance.</red>"
+    }
+  }
+}
+```
+
+---
+
+### POST /api/maintenance/global
+
+Toggle global maintenance mode. When enabled, the proxy shows a maintenance MOTD, overrides the version protocol, and blocks new connections for non-whitelisted players.
+
+**Request Body:**
+
+```json
+{
+  "enabled": true,
+  "reason": "Server update"
+}
+```
+
+---
+
+### PUT /api/maintenance/global
+
+Update global maintenance configuration (MOTD, protocol text, kick message). All fields are optional.
+
+**Request Body:**
+
+```json
+{
+  "motdLine1": "<red><bold>DOWN FOR MAINTENANCE</bold></red>",
+  "motdLine2": "<gray>Back soon!</gray>",
+  "protocolText": "Maintenance",
+  "kickMessage": "<red>Server is under maintenance.</red>"
+}
+```
+
+---
+
+### POST /api/maintenance/groups/{name}
+
+Toggle maintenance mode for a specific server group. Players cannot join servers of groups in maintenance.
+
+**Request Body:**
+
+```json
+{
+  "enabled": true,
+  "reason": "Template update"
+}
+```
+
+---
+
+### PUT /api/maintenance/groups/{name}
+
+Update group maintenance configuration. All fields are optional.
+
+**Request Body:**
+
+```json
+{
+  "kickMessage": "<red>This game mode is being updated.</red>"
+}
+```
+
+---
+
+### POST /api/maintenance/whitelist
+
+Add a player to the maintenance whitelist. Whitelisted players can join during global maintenance.
+
+**Request Body:**
+
+```json
+{
+  "entry": "jonas"
+}
+```
+
+---
+
+### DELETE /api/maintenance/whitelist
+
+Remove a player from the maintenance whitelist.
+
+**Request Body:**
+
+```json
+{
+  "entry": "jonas"
 }
 ```
 

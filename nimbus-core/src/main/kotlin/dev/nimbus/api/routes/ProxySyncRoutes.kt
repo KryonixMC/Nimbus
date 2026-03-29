@@ -11,13 +11,25 @@ import io.ktor.server.routing.*
 
 fun Route.proxySyncRoutes(proxySyncManager: ProxySyncManager, eventBus: EventBus) {
 
-    // GET /api/proxy/config — Full proxy sync config
+    // GET /api/proxy/config — Full proxy sync config (includes maintenance state)
     get("/api/proxy/config") {
         val cfg = proxySyncManager.getConfig()
+        val maintenanceGroups = proxySyncManager.getAllGroupMaintenanceStates()
+            .filter { it.value.enabled }
+            .mapValues { it.value.kickMessage }
         call.respond(ProxySyncResponse(
             tablist = TabListResponse(cfg.tabList.header, cfg.tabList.footer, cfg.tabList.playerFormat, cfg.tabList.updateInterval),
             motd = MotdResponse(cfg.motd.line1, cfg.motd.line2, cfg.motd.maxPlayers, cfg.motd.playerCountOffset),
-            chat = ChatResponse(cfg.chat.format, cfg.chat.enabled)
+            chat = ChatResponse(cfg.chat.format, cfg.chat.enabled),
+            maintenance = ProxyMaintenanceResponse(
+                globalEnabled = proxySyncManager.globalMaintenanceEnabled,
+                motdLine1 = proxySyncManager.globalMotdLine1,
+                motdLine2 = proxySyncManager.globalMotdLine2,
+                protocolText = proxySyncManager.globalProtocolText,
+                kickMessage = proxySyncManager.globalKickMessage,
+                whitelist = proxySyncManager.getMaintenanceWhitelist().toList(),
+                groups = maintenanceGroups
+            )
         ))
     }
 

@@ -410,7 +410,19 @@ data class PermissionCheckResponse(
 data class ProxySyncResponse(
     val tablist: TabListResponse,
     val motd: MotdResponse,
-    val chat: ChatResponse
+    val chat: ChatResponse,
+    val maintenance: ProxyMaintenanceResponse? = null
+)
+
+@Serializable
+data class ProxyMaintenanceResponse(
+    val globalEnabled: Boolean,
+    val motdLine1: String,
+    val motdLine2: String,
+    val protocolText: String,
+    val kickMessage: String,
+    val whitelist: List<String>,
+    val groups: Map<String, String> = emptyMap()  // groupName -> kickMessage (only enabled groups)
 )
 
 @Serializable
@@ -511,6 +523,54 @@ data class LbBackendResponse(
     val host: String,
     val port: Int,
     val playerCount: Int
+)
+
+// ── Maintenance DTOs ───────────────────────────────────────────────
+
+@Serializable
+data class MaintenanceStatusResponse(
+    val global: GlobalMaintenanceResponse,
+    val groups: Map<String, GroupMaintenanceResponse>
+)
+
+@Serializable
+data class GlobalMaintenanceResponse(
+    val enabled: Boolean,
+    val motdLine1: String,
+    val motdLine2: String,
+    val protocolText: String,
+    val kickMessage: String,
+    val whitelist: List<String>
+)
+
+@Serializable
+data class GroupMaintenanceResponse(
+    val enabled: Boolean,
+    val kickMessage: String
+)
+
+@Serializable
+data class MaintenanceToggleRequest(
+    val enabled: Boolean,
+    val reason: String = ""
+)
+
+@Serializable
+data class GlobalMaintenanceUpdateRequest(
+    val motdLine1: String? = null,
+    val motdLine2: String? = null,
+    val protocolText: String? = null,
+    val kickMessage: String? = null
+)
+
+@Serializable
+data class GroupMaintenanceUpdateRequest(
+    val kickMessage: String? = null
+)
+
+@Serializable
+data class MaintenanceWhitelistRequest(
+    val entry: String
 )
 
 // ── Event DTOs (for WebSocket) ──────────────────────────────────────
