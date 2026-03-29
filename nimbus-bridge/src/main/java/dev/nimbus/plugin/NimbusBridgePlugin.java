@@ -69,6 +69,9 @@ public class NimbusBridgePlugin {
 
         // Connect shared event stream (after all handlers are registered)
         connectSharedEventStream();
+
+        // Start health polling to track controller reachability
+        startHealthPoller();
     }
 
     private void registerProxySync() {
@@ -111,6 +114,17 @@ public class NimbusBridgePlugin {
 
     private void connectSharedEventStream() {
         if (sharedEventStream != null) {
+            // Register reconnect callback to re-sync state after controller comes back
+            sharedEventStream.onReconnect(() -> {
+                logger.info("Event stream reconnected — re-syncing proxy config and maintenance state");
+                if (proxySyncListener != null) {
+                    proxySyncListener.refetchConfig();
+                }
+                if (maintenanceHandler != null && sharedApiClient != null) {
+                    maintenanceHandler.refreshFromApi(sharedApiClient);
+                }
+            });
+
             try {
                 sharedEventStream.connect();
                 logger.info("Shared event stream connected");
@@ -120,6 +134,35 @@ public class NimbusBridgePlugin {
         }
     }
 
+    private void startHealthPoller() {
+        if (sharedApiClient == null) return;
+        server.getScheduler().buildTask(
+            server.getPluginManager().getPlugin("nimbus-bridge").orElse(null),
+            () -> {
+                try {
+                    var result = sharedApiClient.get("/api/health").join();
+                    if (result.isSuccess()) {
+                        if (!controllerReachable) {
+                            logger.info("Controller is now reachable");
+                        }
+                        controllerReachable = true;
+                    } else {
+                        if (controllerReachable) {
+                            logger.warn("Controller became unreachable (HTTP {})", result.statusCode());
+                        }
+                        controllerReachable = false;
+                    }
+                } catch (Exception e) {
+                    if (controllerReachable) {
+                        logger.warn("Controller became unreachable: {}", e.getMessage());
+                    }
+                    controllerReachable = false;
+                    logger.debug("Health check failed: {}", e.getMessage());
+                }
+            }
+        ).repeat(10, java.util.concurrent.TimeUnit.SECONDS).schedule();
+    }
+
     private NimbusPermissionProvider permissionProvider;
     private dev.nimbus.sdk.NimbusEventStream sharedEventStream;
     private dev.nimbus.sdk.NimbusClient sharedSdkClient;
@@ -127,6 +170,7 @@ public class NimbusBridgePlugin {
     private ProxySyncListener proxySyncListener;
     private MaintenanceHandler maintenanceHandler;
     private CloudCommand cloudCommand;
+    private volatile boolean controllerReachable = false;
 
     private void ensureSharedClients(BridgeConfig config) {
         if (sharedSdkClient == null) {

@@ -29,7 +29,7 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
         }
 
         transaction(database) {
-            SchemaUtils.create(
+            SchemaUtils.createMissingTablesAndColumns(
                 PermissionGroups, GroupPermissions, GroupParents,
                 Players, PlayerGroups,
                 ServiceEvents, ScalingEvents, PlayerSessions

@@ -1,5 +1,7 @@
 package dev.nimbus.proxy
 
+import com.akuleshov7.ktoml.Toml
+import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -17,6 +19,7 @@ import kotlin.io.path.*
 class ProxySyncManager(private val proxyDir: Path) {
 
     private val logger = LoggerFactory.getLogger(ProxySyncManager::class.java)
+    private val toml = Toml()
 
     private var config = ProxySyncConfig()
     private val playerTabOverrides = ConcurrentHashMap<String, String>()
@@ -82,9 +85,7 @@ class ProxySyncManager(private val proxyDir: Path) {
 
         if (motdFile.exists()) {
             try {
-                val parsed = parseMotdToml(motdFile.readText())
-                motd = parsed.first
-                // Maintenance state loaded as side effect
+                motd = parseMotdToml(motdFile.readText())
             } catch (e: Exception) {
                 logger.warn("Failed to load motd.toml: {}", e.message)
             }
@@ -322,159 +323,40 @@ class ProxySyncManager(private val proxyDir: Path) {
         appendLine("enabled = ${config.chat.enabled}")
     }
 
-    // ── TOML Parsers ───────────────────────────────────────────────
+    // ── TOML Parsers (ktoml) ──────────────────────────────────────
 
-    private fun parseMotdToml(content: String): Pair<MotdConfig, Unit> {
-        var line1 = ""
-        var line2 = ""
-        var maxPlayers = -1
-        var playerCountOffset = 0
+    private fun parseMotdToml(content: String): MotdConfig {
+        val file = toml.decodeFromString(serializer<MotdFileConfig>(), content)
 
-        var section = ""
-        var groupSection = ""
-        val newWhitelist = mutableSetOf<String>()
-        val newGroups = ConcurrentHashMap<String, GroupMaintenanceState>()
-        var tempGroupEnabled = false
-        var tempGroupKickMessage = "<red>This game mode is currently under maintenance.</red>"
-
-        for (rawLine in content.lines()) {
-            val line = rawLine.trim()
-            if (line.isEmpty() || line.startsWith("#")) continue
-
-            if (line.startsWith("[") && line.endsWith("]")) {
-                // Save previous group if any
-                if (groupSection.isNotEmpty()) {
-                    newGroups[groupSection] = GroupMaintenanceState(tempGroupEnabled, tempGroupKickMessage)
-                    tempGroupEnabled = false
-                    tempGroupKickMessage = "<red>This game mode is currently under maintenance.</red>"
-                }
-
-                val sectionName = line.removePrefix("[").removeSuffix("]").trim()
-                if (sectionName.startsWith("maintenance.groups.")) {
-                    section = "maintenance.groups"
-                    groupSection = sectionName.removePrefix("maintenance.groups.")
-                } else {
-                    section = sectionName
-                    groupSection = ""
-                }
-                continue
-            }
-
-            val eqIndex = line.indexOf('=')
-            if (eqIndex < 0) continue
-
-            val key = line.substring(0, eqIndex).trim()
-            val rawValue = line.substring(eqIndex + 1).trim()
-
-            when (section) {
-                "motd" -> when (key) {
-                    "line1" -> line1 = extractTomlString(rawValue) ?: rawValue
-                    "line2" -> line2 = extractTomlString(rawValue) ?: rawValue
-                    "max_players" -> maxPlayers = rawValue.toIntOrNull() ?: -1
-                    "player_count_offset" -> playerCountOffset = rawValue.toIntOrNull() ?: 0
-                }
-                "maintenance" -> when (key) {
-                    "enabled" -> globalMaintenanceEnabled = rawValue.toBooleanStrictOrNull() ?: false
-                    "motd_line1" -> globalMotdLine1 = extractTomlString(rawValue) ?: rawValue
-                    "motd_line2" -> globalMotdLine2 = extractTomlString(rawValue) ?: rawValue
-                    "protocol_text" -> globalProtocolText = extractTomlString(rawValue) ?: rawValue
-                    "kick_message" -> globalKickMessage = extractTomlString(rawValue) ?: rawValue
-                    "whitelist" -> {
-                        val arrayContent = rawValue.removePrefix("[").removeSuffix("]").trim()
-                        if (arrayContent.isNotEmpty()) {
-                            arrayContent.split(",").forEach { entry ->
-                                val clean = extractTomlString(entry.trim()) ?: entry.trim()
-                                if (clean.isNotEmpty()) newWhitelist.add(clean.lowercase())
-                            }
-                        }
-                    }
-                }
-                "maintenance.groups" -> when (key) {
-                    "enabled" -> tempGroupEnabled = rawValue.toBooleanStrictOrNull() ?: false
-                    "kick_message" -> tempGroupKickMessage = extractTomlString(rawValue) ?: rawValue
-                }
-            }
-        }
-
-        // Save last group section
-        if (groupSection.isNotEmpty()) {
-            newGroups[groupSection] = GroupMaintenanceState(tempGroupEnabled, tempGroupKickMessage)
-        }
+        // Copy maintenance state into volatile fields
+        val m = file.maintenance
+        globalMaintenanceEnabled = m.enabled
+        globalMotdLine1 = m.motdLine1
+        globalMotdLine2 = m.motdLine2
+        globalProtocolText = m.protocolText
+        globalKickMessage = m.kickMessage
 
         maintenanceWhitelist.clear()
-        maintenanceWhitelist.addAll(newWhitelist)
-        groupMaintenance.clear()
-        groupMaintenance.putAll(newGroups)
+        maintenanceWhitelist.addAll(m.whitelist.map { it.lowercase() })
 
-        return Pair(MotdConfig(line1, line2, maxPlayers, playerCountOffset), Unit)
+        groupMaintenance.clear()
+        for ((name, group) in m.groups) {
+            groupMaintenance[name] = GroupMaintenanceState(group.enabled, group.kickMessage)
+        }
+
+        val s = file.motd
+        return MotdConfig(s.line1, s.line2, s.maxPlayers, s.playerCountOffset)
     }
 
     private fun parseTablistToml(content: String): TabListConfig {
-        var header = ""
-        var footer = ""
-        var playerFormat = ""
-        var updateInterval = 5
-
-        var section = ""
-
-        for (rawLine in content.lines()) {
-            val line = rawLine.trim()
-            if (line.isEmpty() || line.startsWith("#")) continue
-
-            if (line.startsWith("[") && line.endsWith("]")) {
-                section = line.removePrefix("[").removeSuffix("]").trim()
-                continue
-            }
-
-            val eqIndex = line.indexOf('=')
-            if (eqIndex < 0) continue
-
-            val key = line.substring(0, eqIndex).trim()
-            val rawValue = line.substring(eqIndex + 1).trim()
-
-            if (section == "tablist") {
-                when (key) {
-                    "header" -> header = extractTomlString(rawValue) ?: rawValue
-                    "footer" -> footer = extractTomlString(rawValue) ?: rawValue
-                    "player_format" -> playerFormat = extractTomlString(rawValue) ?: rawValue
-                    "update_interval" -> updateInterval = rawValue.toIntOrNull() ?: 5
-                }
-            }
-        }
-
-        return TabListConfig(header, footer, playerFormat, updateInterval)
+        val file = toml.decodeFromString(serializer<TablistFileConfig>(), content)
+        val s = file.tablist
+        return TabListConfig(s.header, s.footer, s.playerFormat, s.updateInterval)
     }
 
     private fun parseChatToml(content: String): ChatConfig {
-        var chatFormat = "{prefix}{player}{suffix} <dark_gray>» <gray>{message}"
-        var chatEnabled = true
-
-        var section = ""
-
-        for (rawLine in content.lines()) {
-            val line = rawLine.trim()
-            if (line.isEmpty() || line.startsWith("#")) continue
-
-            if (line.startsWith("[") && line.endsWith("]")) {
-                section = line.removePrefix("[").removeSuffix("]").trim()
-                continue
-            }
-
-            val eqIndex = line.indexOf('=')
-            if (eqIndex < 0) continue
-
-            val key = line.substring(0, eqIndex).trim()
-            val rawValue = line.substring(eqIndex + 1).trim()
-
-            if (section == "chat") {
-                when (key) {
-                    "format" -> chatFormat = extractTomlString(rawValue) ?: rawValue
-                    "enabled" -> chatEnabled = rawValue.toBooleanStrictOrNull() ?: true
-                }
-            }
-        }
-
-        return ChatConfig(chatFormat, chatEnabled)
+        val file = toml.decodeFromString(serializer<ChatFileConfig>(), content)
+        return ChatConfig(file.chat.format, file.chat.enabled)
     }
 
     // ── TOML Helpers ───────────────────────────────────────────────
@@ -487,18 +369,5 @@ class ProxySyncManager(private val proxyDir: Path) {
             .replace("\r", "\\r")
             .replace("\t", "\\t")
         return "\"$escaped\""
-    }
-
-    private fun extractTomlString(value: String): String? {
-        val trimmed = value.trim()
-        if (trimmed.length >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-            return trimmed.substring(1, trimmed.length - 1)
-                .replace("\\\\", "\\")
-                .replace("\\\"", "\"")
-                .replace("\\n", "\n")
-                .replace("\\r", "\r")
-                .replace("\\t", "\t")
-        }
-        return null
     }
 }

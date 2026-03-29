@@ -2,6 +2,7 @@ package dev.nimbus.service
 
 import dev.nimbus.cluster.NodeManager
 import dev.nimbus.cluster.RemoteServiceHandle
+import dev.nimbus.config.GroupDefinition
 import dev.nimbus.config.NimbusConfig
 import dev.nimbus.config.ServerSoftware
 import dev.nimbus.event.EventBus
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class ServiceManager(
@@ -95,46 +97,13 @@ class ServiceManager(
             service.startedAt = Instant.now()
             eventBus.emit(NimbusEvent.ServiceStarting(serviceName, service.groupName, service.port))
 
-            // Wait for server to become ready
-            scope.launch {
-                try {
-                    val ready = processHandle.waitForReady(readyTimeout)
-                    if (ready) {
-                        service.transitionTo(ServiceState.READY)
-                        eventBus.emit(NimbusEvent.ServiceReady(serviceName, service.groupName))
-                        logger.info("Service '{}' is ready", serviceName)
-                        // Update Velocity proxy server list and reload
-                        velocityConfigGen.updateProxyServerList()
-                        reloadVelocity()
-                    } else {
-                        logger.warn("Service '{}' did not become ready within timeout", serviceName)
-                    }
-                } catch (e: Exception) {
-                    logger.error("Error waiting for service '{}' to become ready", serviceName, e)
-                }
-            }
-
-            // Monitor for unexpected process exit
-            val group = groupManager.getGroup(service.groupName)
-            scope.launch {
-                try {
-                    monitorProcess(
-                        service, processHandle, service.groupName,
-                        group?.config?.group?.lifecycle?.restartOnCrash ?: false,
-                        group?.config?.group?.lifecycle?.maxRestarts ?: 0
-                    )
-                } catch (e: Exception) {
-                    logger.error("Error monitoring service '{}'", serviceName, e)
-                }
-            }
+            launchReadyMonitor(service, processHandle, readyTimeout)
+            launchExitMonitor(service, processHandle)
 
             service
         } catch (e: Exception) {
             logger.error("Failed to start service '{}'", serviceName, e)
-            processHandles[serviceName]?.destroy()
-            processHandles.remove(serviceName)
-            portAllocator.release(service.port)
-            registry.unregister(serviceName)
+            cleanupFailedStart(service)
             null
         }
     }
@@ -153,48 +122,7 @@ class ServiceManager(
             service.host = node.host
             service.nodeId = node.nodeId
 
-            // Compute template hash for cache invalidation
-            val templatesDir = Path(config.paths.templates)
-            val templateDir = templatesDir.resolve(groupConfig.template)
-            val templateHash = computeTemplateHash(templateDir)
-
-            // Determine forwarding
-            val forwardingMode = compatibilityChecker.determineForwardingMode()
-            val forwardingSecret = try {
-                val secretFile = templatesDir.resolve("proxy").resolve("forwarding.secret")
-                if (secretFile.exists()) secretFile.toFile().readText().trim() else ""
-            } catch (_: Exception) { "" }
-
-            // Build the StartService message
-            val startMsg = ClusterMessage.StartService(
-                serviceName = serviceName,
-                groupName = service.groupName,
-                port = service.port,
-                templateName = groupConfig.template,
-                templateHash = templateHash,
-                software = groupConfig.software.name,
-                version = groupConfig.version,
-                memory = groupConfig.resources.memory,
-                jvmArgs = groupConfig.jvm.args,
-                jarName = softwareResolver.jarFileName(groupConfig.software),
-                modloaderVersion = groupConfig.modloaderVersion,
-                readyPattern = groupConfig.readyPattern,
-                readyTimeoutSeconds = if (groupConfig.software in listOf(
-                        dev.nimbus.config.ServerSoftware.FORGE,
-                        dev.nimbus.config.ServerSoftware.NEOFORGE,
-                        dev.nimbus.config.ServerSoftware.FABRIC
-                    )) 180 else 60,
-                forwardingMode = forwardingMode,
-                forwardingSecret = forwardingSecret,
-                isStatic = service.isStatic,
-                isModded = groupConfig.software in listOf(
-                    dev.nimbus.config.ServerSoftware.FORGE,
-                    dev.nimbus.config.ServerSoftware.NEOFORGE,
-                    dev.nimbus.config.ServerSoftware.FABRIC
-                ),
-                apiUrl = if (config.api.enabled) "http://${config.api.bind}:${config.api.port}" else "",
-                apiToken = config.api.token
-            )
+            val startMsg = buildStartServiceMessage(service, groupConfig)
 
             // Create remote handle
             val remoteHandle = RemoteServiceHandle(serviceName, node)
@@ -214,45 +142,101 @@ class ServiceManager(
 
             logger.info("Service '{}' starting on remote node '{}'", serviceName, node.nodeId)
 
-            // Monitor remote handle for ready/exit
-            scope.launch {
-                try {
-                    val ready = remoteHandle.waitForReady(prepared.readyTimeout)
-                    if (ready) {
-                        service.transitionTo(ServiceState.READY)
-                        eventBus.emit(NimbusEvent.ServiceReady(serviceName, service.groupName))
-                        logger.info("Remote service '{}' is ready on node '{}'", serviceName, node.nodeId)
-                        velocityConfigGen.updateProxyServerList()
-                        reloadVelocity()
-                    } else {
-                        logger.warn("Remote service '{}' did not become ready within timeout", serviceName)
-                    }
-                } catch (e: Exception) {
-                    logger.error("Error waiting for remote service '{}' to be ready", serviceName, e)
-                }
-            }
-
-            // Monitor for exit
-            scope.launch {
-                try {
-                    monitorProcess(
-                        service, remoteHandle, service.groupName,
-                        group.config.group.lifecycle.restartOnCrash,
-                        group.config.group.lifecycle.maxRestarts
-                    )
-                } catch (e: Exception) {
-                    logger.error("Error monitoring remote service '{}'", serviceName, e)
-                }
-            }
+            launchReadyMonitor(service, remoteHandle, prepared.readyTimeout)
+            launchExitMonitor(service, remoteHandle)
 
             service
         } catch (e: Exception) {
             logger.error("Failed to start remote service '{}' on node '{}'", serviceName, node.nodeId, e)
-            processHandles.remove(serviceName)
-            portAllocator.release(service.port)
-            registry.unregister(serviceName)
+            cleanupFailedStart(service)
             null
         }
+    }
+
+    private fun buildStartServiceMessage(
+        service: Service,
+        groupConfig: GroupDefinition
+    ): ClusterMessage.StartService {
+        val templatesDir = Path(config.paths.templates)
+        val templateDir = templatesDir.resolve(groupConfig.template)
+        val templateHash = computeTemplateHash(templateDir)
+        val forwardingMode = compatibilityChecker.determineForwardingMode()
+        val forwardingSecret = computeForwardingSecret()
+        val isModded = groupConfig.software in listOf(
+            ServerSoftware.FORGE, ServerSoftware.NEOFORGE, ServerSoftware.FABRIC
+        )
+
+        return ClusterMessage.StartService(
+            serviceName = service.name,
+            groupName = service.groupName,
+            port = service.port,
+            templateName = groupConfig.template,
+            templateHash = templateHash,
+            software = groupConfig.software.name,
+            version = groupConfig.version,
+            memory = groupConfig.resources.memory,
+            jvmArgs = groupConfig.jvm.args,
+            jarName = softwareResolver.jarFileName(groupConfig.software),
+            modloaderVersion = groupConfig.modloaderVersion,
+            readyPattern = groupConfig.readyPattern,
+            readyTimeoutSeconds = if (isModded) 180 else 60,
+            forwardingMode = forwardingMode,
+            forwardingSecret = forwardingSecret,
+            isStatic = service.isStatic,
+            isModded = isModded,
+            apiUrl = if (config.api.enabled) "http://${config.api.bind}:${config.api.port}" else "",
+            apiToken = config.api.token
+        )
+    }
+
+    private fun computeForwardingSecret(): String {
+        return try {
+            val secretFile = Path(config.paths.templates).resolve("proxy").resolve("forwarding.secret")
+            if (secretFile.exists()) secretFile.toFile().readText().trim() else ""
+        } catch (_: Exception) { "" }
+    }
+
+    private fun launchReadyMonitor(service: Service, handle: ServiceHandle, readyTimeout: Duration) {
+        val serviceName = service.name
+        scope.launch {
+            try {
+                val ready = handle.waitForReady(readyTimeout)
+                if (ready) {
+                    service.transitionTo(ServiceState.READY)
+                    eventBus.emit(NimbusEvent.ServiceReady(serviceName, service.groupName))
+                    logger.info("Service '{}' is ready", serviceName)
+                    velocityConfigGen.updateProxyServerList()
+                    reloadVelocity()
+                } else {
+                    logger.warn("Service '{}' did not become ready within timeout", serviceName)
+                }
+            } catch (e: Exception) {
+                logger.error("Error waiting for service '{}' to become ready", serviceName, e)
+            }
+        }
+    }
+
+    private fun launchExitMonitor(service: Service, handle: ServiceHandle) {
+        val serviceName = service.name
+        val group = groupManager.getGroup(service.groupName)
+        scope.launch {
+            try {
+                monitorProcess(
+                    service, handle, service.groupName,
+                    group?.config?.group?.lifecycle?.restartOnCrash ?: false,
+                    group?.config?.group?.lifecycle?.maxRestarts ?: 0
+                )
+            } catch (e: Exception) {
+                logger.error("Error monitoring service '{}'", serviceName, e)
+            }
+        }
+    }
+
+    private fun cleanupFailedStart(service: Service) {
+        processHandles[service.name]?.destroy()
+        processHandles.remove(service.name)
+        portAllocator.release(service.port)
+        registry.unregister(service.name)
     }
 
     private fun computeTemplateHash(templateDir: Path): String {

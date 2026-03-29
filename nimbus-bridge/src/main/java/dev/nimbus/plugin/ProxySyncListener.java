@@ -78,11 +78,17 @@ public class ProxySyncListener {
 
     /**
      * Initialize: fetch config from API, register event handlers, start refresh task.
+     * If the initial config fetch fails, event handlers and scheduler are still registered
+     * and a retry is scheduled every 10 seconds until success.
      */
     public void init() {
-        // Fetch initial config
-        fetchConfig();
-        fetchPlayerOverrides();
+        // Fetch initial config (graceful — continues with defaults on failure)
+        boolean configLoaded = fetchConfigGraceful();
+        if (configLoaded) {
+            fetchPlayerOverrides();
+        } else {
+            scheduleConfigRetry();
+        }
 
         // Register WebSocket event handlers
         eventStream.onEvent("TABLIST_UPDATED", e -> {
@@ -389,51 +395,106 @@ public class ProxySyncListener {
         if (scheduler != null) {
             scheduler.shutdownNow();
         }
+        if (configRetryScheduler != null) {
+            configRetryScheduler.shutdownNow();
+        }
+    }
+
+    // ── Config Retry / Refetch ──────────────────────────────────────
+
+    private volatile ScheduledExecutorService configRetryScheduler;
+
+    /**
+     * Fetch config gracefully — returns true on success, false on failure.
+     */
+    private boolean fetchConfigGraceful() {
+        try {
+            fetchConfig();
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to fetch proxy config (will retry): {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Schedule periodic config retry every 10s until successful.
+     */
+    private void scheduleConfigRetry() {
+        if (configRetryScheduler != null) return;
+        configRetryScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "nimbus-config-retry");
+            t.setDaemon(true);
+            return t;
+        });
+        configRetryScheduler.scheduleAtFixedRate(() -> {
+            try {
+                fetchConfig();
+                fetchPlayerOverrides();
+                logger.info("Proxy sync config loaded after retry");
+                // Success — stop retrying
+                var retryExec = configRetryScheduler;
+                configRetryScheduler = null;
+                if (retryExec != null) retryExec.shutdownNow();
+            } catch (Exception e) {
+                logger.debug("Config retry failed, will try again: {}", e.getMessage());
+            }
+        }, 10, 10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Public method to re-fetch config and maintenance state from the API.
+     * Called from the reconnect callback when the controller becomes reachable again.
+     */
+    public void refetchConfig() {
+        try {
+            fetchConfig();
+            fetchPlayerOverrides();
+            refreshAllTabLists();
+            logger.info("Proxy sync config re-fetched after reconnect");
+        } catch (Exception e) {
+            logger.warn("Failed to re-fetch proxy config: {}", e.getMessage());
+        }
     }
 
     // ── API Fetching ────────────────────────────────────────────────
 
     private void fetchConfig() {
-        try {
-            var result = apiClient.get("/api/proxy/config").join();
-            if (!result.isSuccess()) {
-                logger.warn("Failed to fetch proxy config: HTTP {}", result.statusCode());
-                return;
-            }
-            JsonObject json = result.asJson();
-
-            JsonObject tablist = json.getAsJsonObject("tablist");
-            if (tablist != null) {
-                tabHeader = getJsonString(tablist, "header", tabHeader);
-                tabFooter = getJsonString(tablist, "footer", tabFooter);
-                playerFormat = getJsonString(tablist, "playerFormat", playerFormat);
-                if (tablist.has("updateInterval")) updateInterval = tablist.get("updateInterval").getAsInt();
-            }
-
-            JsonObject motd = json.getAsJsonObject("motd");
-            if (motd != null) {
-                motdLine1 = getJsonString(motd, "line1", motdLine1);
-                motdLine2 = getJsonString(motd, "line2", motdLine2);
-                if (motd.has("maxPlayers")) motdMaxPlayers = motd.get("maxPlayers").getAsInt();
-                if (motd.has("playerCountOffset")) motdPlayerCountOffset = motd.get("playerCountOffset").getAsInt();
-            }
-
-            JsonObject chat = json.getAsJsonObject("chat");
-            if (chat != null) {
-                chatFormat = getJsonString(chat, "format", chatFormat);
-                if (chat.has("enabled")) chatEnabled = chat.get("enabled").getAsBoolean();
-            }
-
-            // Load maintenance state from proxy config
-            MaintenanceHandler mh = maintenanceHandler;
-            if (mh != null && json.has("maintenance") && json.get("maintenance").isJsonObject()) {
-                mh.loadFromProxyConfig(json.getAsJsonObject("maintenance"));
-            }
-
-            logger.info("Loaded proxy sync config from API");
-        } catch (Exception e) {
-            logger.warn("Failed to fetch proxy config: {}", e.getMessage());
+        var result = apiClient.get("/api/proxy/config").join();
+        if (!result.isSuccess()) {
+            throw new RuntimeException("Failed to fetch proxy config: HTTP " + result.statusCode());
         }
+        JsonObject json = result.asJson();
+
+        JsonObject tablist = json.getAsJsonObject("tablist");
+        if (tablist != null) {
+            tabHeader = getJsonString(tablist, "header", tabHeader);
+            tabFooter = getJsonString(tablist, "footer", tabFooter);
+            playerFormat = getJsonString(tablist, "playerFormat", playerFormat);
+            if (tablist.has("updateInterval")) updateInterval = tablist.get("updateInterval").getAsInt();
+        }
+
+        JsonObject motd = json.getAsJsonObject("motd");
+        if (motd != null) {
+            motdLine1 = getJsonString(motd, "line1", motdLine1);
+            motdLine2 = getJsonString(motd, "line2", motdLine2);
+            if (motd.has("maxPlayers")) motdMaxPlayers = motd.get("maxPlayers").getAsInt();
+            if (motd.has("playerCountOffset")) motdPlayerCountOffset = motd.get("playerCountOffset").getAsInt();
+        }
+
+        JsonObject chat = json.getAsJsonObject("chat");
+        if (chat != null) {
+            chatFormat = getJsonString(chat, "format", chatFormat);
+            if (chat.has("enabled")) chatEnabled = chat.get("enabled").getAsBoolean();
+        }
+
+        // Load maintenance state from proxy config
+        MaintenanceHandler mh = maintenanceHandler;
+        if (mh != null && json.has("maintenance") && json.get("maintenance").isJsonObject()) {
+            mh.loadFromProxyConfig(json.getAsJsonObject("maintenance"));
+        }
+
+        logger.info("Loaded proxy sync config from API");
     }
 
     private void fetchPlayerOverrides() {

@@ -49,8 +49,10 @@ public class NimbusEventStream implements AutoCloseable {
     private final HttpClient httpClient;
     private final ConcurrentHashMap<String, List<Consumer<NimbusEvent>>> handlers = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<Consumer<NimbusEvent>> globalHandlers = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Runnable> reconnectCallbacks = new CopyOnWriteArrayList<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean autoReconnect = new AtomicBoolean(true);
+    private final AtomicBoolean firstConnect = new AtomicBoolean(true);
     private final AtomicReference<WebSocket> webSocketRef = new AtomicReference<>();
 
     NimbusEventStream(URI uri) {
@@ -105,6 +107,15 @@ public class NimbusEventStream implements AutoCloseable {
                 handler.accept(typed);
             }
         });
+    }
+
+    /**
+     * Register a callback to be invoked when the stream reconnects (not on first connect).
+     *
+     * @param callback runnable to execute on reconnection
+     */
+    public void onReconnect(Runnable callback) {
+        reconnectCallbacks.add(callback);
     }
 
     /**
@@ -163,6 +174,16 @@ public class NimbusEventStream implements AutoCloseable {
                         logger.info("Connected to Nimbus event stream");
                         webSocketRef.set(webSocket);
                         webSocket.request(1);
+                        if (firstConnect.compareAndSet(true, false)) {
+                            return; // Skip callbacks on first connect
+                        }
+                        for (Runnable callback : reconnectCallbacks) {
+                            try {
+                                callback.run();
+                            } catch (Exception e) {
+                                logger.log(Level.WARNING, "Error in reconnect callback", e);
+                            }
+                        }
                     }
 
                     @Override

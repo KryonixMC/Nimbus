@@ -61,6 +61,7 @@ object ServiceEvents : Table("service_events") {
 
     init {
         index(false, timestamp)
+        index(false, serviceName)
     }
 }
 
@@ -78,6 +79,8 @@ object ScalingEvents : Table("scaling_events") {
 
     init {
         index(false, timestamp)
+        index(false, serviceName)
+        index(false, groupName)
     }
 }
 
@@ -92,5 +95,7 @@ object PlayerSessions : Table("player_sessions") {
 
     init {
         index(false, playerName, connectedAt)
+        index(false, serviceName)
+        index(false, playerName, serviceName, disconnectedAt)
     }
 }

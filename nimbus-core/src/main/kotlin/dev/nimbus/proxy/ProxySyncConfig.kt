@@ -1,5 +1,76 @@
 package dev.nimbus.proxy
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+// ── File-level TOML wrappers (used for ktoml deserialization) ─────
+
+@Serializable
+data class MotdFileConfig(
+    val motd: MotdTomlSection = MotdTomlSection(),
+    val maintenance: MaintenanceTomlSection = MaintenanceTomlSection()
+)
+
+@Serializable
+data class MotdTomlSection(
+    val line1: String = "",
+    val line2: String = "",
+    @SerialName("max_players")
+    val maxPlayers: Int = -1,
+    @SerialName("player_count_offset")
+    val playerCountOffset: Int = 0
+)
+
+@Serializable
+data class MaintenanceTomlSection(
+    val enabled: Boolean = false,
+    @SerialName("motd_line1")
+    val motdLine1: String = "  <gradient:#ff6b6b:#ee5a24><bold>MAINTENANCE</bold></gradient>",
+    @SerialName("motd_line2")
+    val motdLine2: String = "  <gray>We are currently performing maintenance.</gray>",
+    @SerialName("protocol_text")
+    val protocolText: String = "Maintenance",
+    @SerialName("kick_message")
+    val kickMessage: String = "<red><bold>Maintenance</bold></red>\n<gray>The server is currently under maintenance.\nPlease try again later.</gray>",
+    val whitelist: List<String> = emptyList(),
+    val groups: Map<String, GroupMaintenanceTomlSection> = emptyMap()
+)
+
+@Serializable
+data class GroupMaintenanceTomlSection(
+    val enabled: Boolean = false,
+    @SerialName("kick_message")
+    val kickMessage: String = "<red>This game mode is currently under maintenance.</red>"
+)
+
+@Serializable
+data class TablistFileConfig(
+    val tablist: TablistTomlSection = TablistTomlSection()
+)
+
+@Serializable
+data class TablistTomlSection(
+    val header: String = "",
+    val footer: String = "",
+    @SerialName("player_format")
+    val playerFormat: String = "",
+    @SerialName("update_interval")
+    val updateInterval: Int = 5
+)
+
+@Serializable
+data class ChatFileConfig(
+    val chat: ChatTomlSection = ChatTomlSection()
+)
+
+@Serializable
+data class ChatTomlSection(
+    val format: String = "{prefix}{player}{suffix} <dark_gray>» <gray>{message}",
+    val enabled: Boolean = true
+)
+
+// ── Runtime config classes ────────────────────────────────────────
+
 data class ProxySyncConfig(
     val tabList: TabListConfig = TabListConfig(),
     val motd: MotdConfig = MotdConfig(),
