@@ -24,7 +24,7 @@ class NodeConnection(
     @Volatile var cpuUsage: Double = 0.0
     @Volatile var memoryUsedMb: Long = 0
     @Volatile var memoryTotalMb: Long = 0
-    @Volatile var agentVersion: String = "0.1.0"
+    @Volatile var agentVersion: String = "dev"
     @Volatile var os: String = ""
     @Volatile var arch: String = ""
 

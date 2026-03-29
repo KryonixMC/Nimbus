@@ -5,7 +5,7 @@ plugins {
 
 allprojects {
     group = "dev.nimbus"
-    version = "0.1.0"
+    version = findProperty("nimbusVersion") as String? ?: "0.0.0"
 
     repositories {
         mavenCentral()

@@ -1,5 +1,6 @@
 package dev.nimbus.console
 
+import dev.nimbus.NimbusVersion
 import dev.nimbus.event.NimbusEvent
 import dev.nimbus.service.ServiceState
 import java.time.Instant
@@ -272,7 +273,7 @@ object ConsoleFormatter {
         appendLine()
         if (networkName.isNotEmpty()) {
             appendLine("${DIM}Network:${RESET}  ${BOLD}$networkName${RESET}")
-            appendLine("${DIM}Version:${RESET}  ${CYAN}v0.2.0${RESET}")
+            appendLine("${DIM}Version:${RESET}  ${CYAN}v${NimbusVersion.version}${RESET}")
             appendLine("${DIM}${"─".repeat(34)}$RESET")
             appendLine()
         }

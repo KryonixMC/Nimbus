@@ -18,6 +18,12 @@ java {
     }
 }
 
+tasks.processResources {
+    filesMatching("plugin.yml") {
+        expand("version" to project.version)
+    }
+}
+
 tasks.shadowJar {
     archiveClassifier.set("")
     // SDK + Gson are provided by NimbusSDK plugin and Paper

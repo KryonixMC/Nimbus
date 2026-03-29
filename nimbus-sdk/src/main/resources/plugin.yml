@@ -1,5 +1,5 @@
 name: NimbusSDK
-version: '0.1.0'
+version: '${version}'
 main: dev.nimbus.sdk.NimbusSdkPlugin
 api-version: '1.20'
 description: Nimbus Cloud SDK — provides API client for Nimbus-managed servers

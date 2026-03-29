@@ -1,5 +1,6 @@
 package dev.nimbus.api
 
+import dev.nimbus.NimbusVersion
 import dev.nimbus.api.routes.*
 import dev.nimbus.cluster.NodeManager
 import dev.nimbus.config.ApiConfig
@@ -224,7 +225,7 @@ class NimbusApi(
     }
 
     companion object {
-        const val VERSION = "0.2.0"
+        val VERSION = NimbusVersion.version
 
         /**
          * Timing-safe token comparison to prevent timing attacks.

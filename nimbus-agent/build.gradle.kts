@@ -33,6 +33,12 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
 }
 
+tasks.jar {
+    manifest {
+        attributes("Implementation-Version" to project.version)
+    }
+}
+
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()

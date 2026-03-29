@@ -92,6 +92,12 @@ tasks.processResources {
     dependsOn(pluginJar, sdkJar, signsJar)
 }
 
+tasks.jar {
+    manifest {
+        attributes("Implementation-Version" to project.version)
+    }
+}
+
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
