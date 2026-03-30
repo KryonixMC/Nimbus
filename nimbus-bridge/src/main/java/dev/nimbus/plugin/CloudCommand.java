@@ -12,10 +12,14 @@ import net.kyori.adventure.text.format.TextDecoration;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -41,15 +45,18 @@ public class CloudCommand implements SimpleCommand {
             Map.entry("info",        "nimbus.cloud.info"),
             Map.entry("setstate",    "nimbus.cloud.setstate"),
             Map.entry("reload",      "nimbus.cloud.reload"),
-            Map.entry("shutdown",    "nimbus.cloud.shutdown"),
             Map.entry("perms",       "nimbus.cloud.perms"),
-            Map.entry("maintenance", "nimbus.cloud.maintenance")
+            Map.entry("maintenance", "nimbus.cloud.maintenance"),
+            Map.entry("stress",      "nimbus.cloud.stress"),
+            Map.entry("events",      "nimbus.cloud.events")
     );
 
     private static final List<String> SUBCOMMANDS = List.of(
             "help", "list", "status", "start", "stop", "restart",
-            "exec", "players", "send", "groups", "info", "setstate", "reload", "shutdown", "perms", "maintenance"
+            "exec", "players", "send", "groups", "info", "setstate", "reload", "perms", "maintenance", "stress", "events"
     );
+
+    private static final List<String> STRESS_SUBCMDS = List.of("status", "start", "stop", "ramp");
 
     private static final List<String> MAINTENANCE_SUBCMDS = List.of(
             "status", "on", "off", "list", "add", "remove"
@@ -64,11 +71,34 @@ public class CloudCommand implements SimpleCommand {
 
     private final com.velocitypowered.api.proxy.ProxyServer proxyServer;
     private volatile MaintenanceHandler maintenanceHandler;
+    private final Set<UUID> eventSubscribers = ConcurrentHashMap.newKeySet();
 
     public CloudCommand(NimbusApiClient api, dev.nimbus.sdk.NimbusClient sdkClient, com.velocitypowered.api.proxy.ProxyServer proxyServer) {
         this.api = api;
         this.sdkClient = sdkClient;
         this.proxyServer = proxyServer;
+    }
+
+    /**
+     * Registers the global event handler on the shared event stream.
+     * Called once from NimbusBridgePlugin after the stream is set up.
+     */
+    public void registerEventStream(dev.nimbus.sdk.NimbusEventStream eventStream) {
+        eventStream.onAnyEvent(event -> {
+            if (eventSubscribers.isEmpty()) return;
+            Component message = formatEventComponent(event);
+            if (message == null) return;
+            for (UUID uuid : eventSubscribers) {
+                proxyServer.getPlayer(uuid).ifPresent(player -> player.sendMessage(message));
+            }
+        });
+    }
+
+    /**
+     * Removes a player from event subscribers (e.g. on disconnect).
+     */
+    public void unsubscribePlayer(UUID uuid) {
+        eventSubscribers.remove(uuid);
     }
 
     public void setMaintenanceHandler(MaintenanceHandler handler) {
@@ -118,9 +148,10 @@ public class CloudCommand implements SimpleCommand {
             case "info"    -> handleInfo(invocation, args);
             case "setstate"-> handleSetState(invocation, args);
             case "reload"  -> handleReload(invocation);
-            case "shutdown"-> handleShutdown(invocation);
             case "perms"       -> handlePerms(invocation, args);
             case "maintenance" -> handleMaintenance(invocation, args);
+            case "stress"      -> handleStress(invocation, args);
+            case "events"      -> handleEvents(invocation);
         }
     }
 
@@ -151,6 +182,15 @@ public class CloudCommand implements SimpleCommand {
             return suggestMaintenance(args);
         }
 
+        // Stress subcommand tab completion
+        if (sub.equals("stress") && invocation.source().hasPermission("nimbus.cloud.stress")) {
+            if (args.length == 2) {
+                String partial = args[1].toLowerCase();
+                return STRESS_SUBCMDS.stream().filter(s -> s.startsWith(partial)).toList();
+            }
+            return List.of();
+        }
+
         // For other subcommands that take service/group names
         return List.of();
     }
@@ -178,8 +218,9 @@ public class CloudCommand implements SimpleCommand {
                 new HelpEntry("/cloud setstate <svc> <state>", "Set custom state on service","nimbus.cloud.setstate"),
                 new HelpEntry("/cloud perms",                 "Manage permissions",        "nimbus.cloud.perms"),
                 new HelpEntry("/cloud maintenance",           "Toggle maintenance mode",   "nimbus.cloud.maintenance"),
+                new HelpEntry("/cloud stress",                "Simulate player load",      "nimbus.cloud.stress"),
                 new HelpEntry("/cloud reload",                "Reload group configs",      "nimbus.cloud.reload"),
-                new HelpEntry("/cloud shutdown",              "Shutdown the cloud",        "nimbus.cloud.shutdown")
+                new HelpEntry("/cloud events",                "Toggle live event feed",    "nimbus.cloud.events")
         );
 
         for (var entry : entries) {
@@ -527,35 +568,177 @@ public class CloudCommand implements SimpleCommand {
         });
     }
 
-    private void handleShutdown(Invocation invocation) {
+    // ── Stress Test ────────────────────────────────────────────────────
+
+    private void handleStress(Invocation invocation, String[] args) {
         var source = invocation.source();
 
-        // Extra confirmation — only players can accidentally trigger this
-        if (invocation.source() instanceof Player) {
-            source.sendMessage(
-                    Component.text("Are you sure? This will shut down the entire cloud.", NamedTextColor.RED).decorate(TextDecoration.BOLD)
-            );
-            source.sendMessage(
-                    Component.text("  Click to confirm: ", NamedTextColor.GRAY)
-                            .append(Component.text("[CONFIRM SHUTDOWN]", NamedTextColor.DARK_RED)
-                                    .decorate(TextDecoration.BOLD)
-                                    .clickEvent(ClickEvent.runCommand("/cloud-shutdown-confirm")))
-            );
+        if (args.length < 2) {
+            sendStressHelp(source);
             return;
         }
 
-        executeShutdown(source);
+        String action = args[1].toLowerCase();
+        switch (action) {
+            case "status" -> handleStressStatus(source);
+            case "start" -> handleStressStart(source, args);
+            case "stop" -> handleStressStop(source);
+            case "ramp" -> handleStressRamp(source, args);
+            default -> sendStressHelp(source);
+        }
     }
 
-    void executeShutdown(com.velocitypowered.api.command.CommandSource source) {
-        source.sendMessage(Component.text("Shutting down Nimbus...", NamedTextColor.RED));
-        api.post("/api/shutdown").thenAccept(result -> {
+    private void handleStressStatus(com.velocitypowered.api.command.CommandSource source) {
+        api.get("/api/stress").thenAccept(result -> {
+            if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
+            JsonObject json = result.asJson();
+            boolean active = json.get("active").getAsBoolean();
+
+            source.sendMessage(Component.empty());
+            source.sendMessage(Component.text("  Stress Test", NamedTextColor.LIGHT_PURPLE).decorate(TextDecoration.BOLD));
+            source.sendMessage(Component.empty());
+
+            if (!active) {
+                source.sendMessage(Component.text("  No stress test running.", NamedTextColor.GRAY));
+                source.sendMessage(Component.text("  Start one with: /cloud stress start <players> [group]", NamedTextColor.GRAY));
+                return;
+            }
+
+            String group = json.has("group") && !json.get("group").isJsonNull()
+                    ? json.get("group").getAsString() : "all groups";
+            int current = json.get("currentPlayers").getAsInt();
+            int target = json.get("targetPlayers").getAsInt();
+            int capacity = json.get("totalCapacity").getAsInt();
+            int overflow = json.get("overflow").getAsInt();
+            long elapsed = json.get("elapsedSeconds").getAsLong();
+
+            source.sendMessage(Component.text("  Target:   ", NamedTextColor.GRAY).append(Component.text(group, NamedTextColor.WHITE)));
+            source.sendMessage(Component.text("  Players:  ", NamedTextColor.GRAY)
+                    .append(Component.text(current, NamedTextColor.WHITE))
+                    .append(Component.text(" / " + target, NamedTextColor.GRAY)));
+            source.sendMessage(Component.text("  Capacity: ", NamedTextColor.GRAY).append(Component.text(capacity, NamedTextColor.WHITE)));
+            source.sendMessage(Component.text("  Elapsed:  ", NamedTextColor.GRAY).append(Component.text(formatUptime(elapsed), NamedTextColor.WHITE)));
+
+            if (overflow > 0) {
+                source.sendMessage(Component.text("  Overflow: ", NamedTextColor.GRAY)
+                        .append(Component.text(overflow + " over capacity", NamedTextColor.RED)));
+            }
+
+            // Per-service breakdown
+            JsonObject services = json.getAsJsonObject("services");
+            if (services != null && !services.entrySet().isEmpty()) {
+                source.sendMessage(Component.empty());
+                for (var entry : services.entrySet()) {
+                    source.sendMessage(Component.text("  " + entry.getKey(), NamedTextColor.WHITE)
+                            .append(Component.text(" " + entry.getValue().getAsInt() + " players", NamedTextColor.GRAY)));
+                }
+            }
+            source.sendMessage(Component.empty());
+        });
+    }
+
+    private void handleStressStart(com.velocitypowered.api.command.CommandSource source, String[] args) {
+        // /cloud stress start <players> [group] [rampSeconds]
+        if (args.length < 3) {
+            source.sendMessage(Component.text("Usage: /cloud stress start <players> [group] [rampSeconds]", NamedTextColor.RED));
+            return;
+        }
+
+        int players;
+        try { players = Integer.parseInt(args[2]); } catch (NumberFormatException e) {
+            source.sendMessage(Component.text("Invalid player count: " + args[2], NamedTextColor.RED));
+            return;
+        }
+
+        String group = args.length >= 4 ? args[3] : null;
+        long rampSeconds = 0;
+        if (args.length >= 5) {
+            try { rampSeconds = Long.parseLong(args[4]); } catch (NumberFormatException ignored) {}
+        }
+        // If group looks like a number and no explicit ramp, treat it as ramp
+        if (group != null && rampSeconds == 0) {
+            try {
+                rampSeconds = Long.parseLong(group);
+                group = null;
+            } catch (NumberFormatException ignored) {}
+        }
+
+        String body = "{\"players\":" + players
+                + (group != null ? ",\"group\":\"" + group + "\"" : "")
+                + ",\"rampSeconds\":" + rampSeconds + "}";
+
+        source.sendMessage(Component.text("Starting stress test...", NamedTextColor.GRAY));
+        api.postJson("/api/stress/start", body).thenAccept(result -> {
             if (result.isSuccess()) {
-                source.sendMessage(Component.text("Shutdown initiated.", NamedTextColor.GREEN));
+                String msg = result.asJson().get("message").getAsString();
+                source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
             } else {
                 source.sendMessage(apiError(result));
             }
         });
+    }
+
+    private void handleStressStop(com.velocitypowered.api.command.CommandSource source) {
+        source.sendMessage(Component.text("Stopping stress test...", NamedTextColor.GRAY));
+        api.post("/api/stress/stop").thenAccept(result -> {
+            if (result.isSuccess()) {
+                source.sendMessage(Component.text("Stress test stopped.", NamedTextColor.GREEN));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void handleStressRamp(com.velocitypowered.api.command.CommandSource source, String[] args) {
+        // /cloud stress ramp <players> [durationSeconds]
+        if (args.length < 3) {
+            source.sendMessage(Component.text("Usage: /cloud stress ramp <players> [durationSeconds]", NamedTextColor.RED));
+            return;
+        }
+
+        int players;
+        try { players = Integer.parseInt(args[2]); } catch (NumberFormatException e) {
+            source.sendMessage(Component.text("Invalid player count: " + args[2], NamedTextColor.RED));
+            return;
+        }
+
+        long duration = args.length >= 4 ? 30 : 30;
+        if (args.length >= 4) {
+            try { duration = Long.parseLong(args[3]); } catch (NumberFormatException ignored) {}
+        }
+
+        String body = "{\"players\":" + players + ",\"durationSeconds\":" + duration + "}";
+        api.postJson("/api/stress/ramp", body).thenAccept(result -> {
+            if (result.isSuccess()) {
+                String msg = result.asJson().get("message").getAsString();
+                source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
+            } else {
+                source.sendMessage(apiError(result));
+            }
+        });
+    }
+
+    private void sendStressHelp(com.velocitypowered.api.command.CommandSource source) {
+        source.sendMessage(Component.empty());
+        source.sendMessage(Component.text("  Stress Test Commands", NamedTextColor.LIGHT_PURPLE).decorate(TextDecoration.BOLD));
+        source.sendMessage(Component.empty());
+
+        record Entry(String cmd, String desc) {}
+        var entries = List.of(
+                new Entry("/cloud stress status",                       "Show stress test status"),
+                new Entry("/cloud stress start <players> [group]",      "Start a stress test"),
+                new Entry("/cloud stress stop",                         "Stop the stress test"),
+                new Entry("/cloud stress ramp <players> [duration]",    "Adjust target mid-test")
+        );
+
+        for (var entry : entries) {
+            source.sendMessage(
+                    Component.text("  " + entry.cmd(), NamedTextColor.WHITE)
+                            .clickEvent(ClickEvent.suggestCommand(entry.cmd().split(" <")[0]))
+                            .append(Component.text(" — " + entry.desc(), NamedTextColor.GRAY))
+            );
+        }
+        source.sendMessage(Component.empty());
     }
 
     // ── Perms ───────────────────────────────────────────────────────
@@ -1206,6 +1389,160 @@ public class CloudCommand implements SimpleCommand {
             }
         }
         return serverName;
+    }
+
+    // ── Events ───────────────────────────────────────────────────────
+
+    private void handleEvents(Invocation invocation) {
+        var source = invocation.source();
+        if (!(source instanceof Player player)) {
+            source.sendMessage(Component.text("This command can only be used by players.", NamedTextColor.RED));
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        if (eventSubscribers.remove(uuid)) {
+            player.sendMessage(Component.text("Event feed disabled.", NamedTextColor.YELLOW));
+        } else {
+            eventSubscribers.add(uuid);
+            player.sendMessage(Component.text("Event feed enabled. ", NamedTextColor.GREEN)
+                    .append(Component.text("Use ", NamedTextColor.GRAY))
+                    .append(Component.text("/cloud events", NamedTextColor.WHITE)
+                            .clickEvent(ClickEvent.runCommand("/cloud events")))
+                    .append(Component.text(" again to disable.", NamedTextColor.GRAY)));
+        }
+    }
+
+    /**
+     * Formats a NimbusEvent as a Minecraft chat Component, mirroring the CLI console output.
+     */
+    private static Component formatEventComponent(dev.nimbus.sdk.NimbusEvent event) {
+        String type = event.getType();
+
+        // Timestamp prefix
+        String ts = event.getTimestamp();
+        String timeStr;
+        try {
+            var instant = java.time.Instant.parse(ts);
+            var local = java.time.LocalTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+            timeStr = String.format("[%02d:%02d:%02d]", local.getHour(), local.getMinute(), local.getSecond());
+        } catch (Exception e) {
+            timeStr = "[--:--:--]";
+        }
+        Component time = Component.text(timeStr + " ", NamedTextColor.DARK_GRAY);
+
+        Component body = switch (type) {
+            case "SERVICE_STARTING" -> {
+                String nodeInfo = !"local".equals(event.get("nodeId")) && event.get("nodeId") != null
+                        ? ", node=" + event.get("nodeId") : "";
+                yield Component.text("▲ STARTING ", NamedTextColor.YELLOW)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" (group=" + event.get("group") + ", port=" + event.get("port") + nodeInfo + ")", NamedTextColor.GRAY));
+            }
+            case "SERVICE_READY" ->
+                Component.text("● READY ", NamedTextColor.GREEN)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" (group=" + event.get("group") + ")", NamedTextColor.GRAY));
+            case "SERVICE_STOPPING" ->
+                Component.text("▼ STOPPING ", NamedTextColor.YELLOW)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD));
+            case "SERVICE_STOPPED" ->
+                Component.text("○ STOPPED ", NamedTextColor.BLUE)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD));
+            case "SERVICE_CRASHED" ->
+                Component.text("✖ CRASHED ", NamedTextColor.RED)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" (exit=" + event.get("exitCode") + ", attempt=" + event.get("restartAttempt") + ")", NamedTextColor.GRAY));
+            case "SCALE_UP" ->
+                Component.text("↑ SCALE UP ", NamedTextColor.GREEN)
+                        .append(Component.text("group=", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("group"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" " + event.get("currentInstances") + " → " + event.get("targetInstances") + " ", NamedTextColor.WHITE))
+                        .append(Component.text("(" + event.get("reason") + ")", NamedTextColor.GRAY));
+            case "SCALE_DOWN" ->
+                Component.text("↓ SCALE DOWN ", NamedTextColor.YELLOW)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" from group=" + event.get("group") + " (" + event.get("reason") + ")", NamedTextColor.GRAY));
+            case "PLAYER_CONNECTED" ->
+                Component.text("+ ", NamedTextColor.GREEN)
+                        .append(Component.text(event.get("player"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" joined ", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("service"), NamedTextColor.AQUA));
+            case "PLAYER_DISCONNECTED" ->
+                Component.text("− ", NamedTextColor.RED)
+                        .append(Component.text(event.get("player"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" left ", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("service"), NamedTextColor.AQUA));
+            case "GROUP_CREATED" ->
+                Component.text("+ GROUP ", NamedTextColor.GREEN)
+                        .append(Component.text(event.get("group"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" created", NamedTextColor.WHITE));
+            case "GROUP_UPDATED" ->
+                Component.text("~ GROUP ", NamedTextColor.BLUE)
+                        .append(Component.text(event.get("group"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" updated", NamedTextColor.WHITE));
+            case "GROUP_DELETED" ->
+                Component.text("- GROUP ", NamedTextColor.YELLOW)
+                        .append(Component.text(event.get("group"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" deleted", NamedTextColor.WHITE));
+            case "SERVICE_CUSTOM_STATE_CHANGED" -> {
+                String oldState = event.get("oldState") != null ? event.get("oldState") : "-";
+                String newState = event.get("newState") != null ? event.get("newState") : "-";
+                yield Component.text("~ STATE ", NamedTextColor.BLUE)
+                        .append(Component.text(event.get("service"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" " + oldState + " → " + newState, NamedTextColor.GRAY));
+            }
+            case "SERVICE_MESSAGE" ->
+                Component.text("✉ MSG ", NamedTextColor.BLUE)
+                        .append(Component.text(event.get("fromService"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" → ", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("toService"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" [" + event.get("channel") + "]", NamedTextColor.GRAY));
+            case "CONFIG_RELOADED" ->
+                Component.text("↻ CONFIG ", NamedTextColor.BLUE)
+                        .append(Component.text("reloaded ", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("groupsLoaded"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" group(s)", NamedTextColor.WHITE));
+            case "MAINTENANCE_ENABLED" -> {
+                String scope = "global".equals(event.get("scope")) ? "GLOBAL" : "group " + event.get("scope");
+                String reason = event.get("reason") != null && !event.get("reason").isEmpty()
+                        ? " (" + event.get("reason") + ")" : "";
+                yield Component.text("⚠ MAINTENANCE ", NamedTextColor.YELLOW)
+                        .append(Component.text(scope + " enabled", NamedTextColor.WHITE))
+                        .append(Component.text(reason, NamedTextColor.GRAY));
+            }
+            case "MAINTENANCE_DISABLED" -> {
+                String scope = "global".equals(event.get("scope")) ? "GLOBAL" : "group " + event.get("scope");
+                yield Component.text("✓ MAINTENANCE ", NamedTextColor.GREEN)
+                        .append(Component.text(scope + " disabled", NamedTextColor.WHITE));
+            }
+            case "STRESS_TEST_UPDATED" -> {
+                String simulated = event.get("simulatedPlayers");
+                if (simulated != null && !"0".equals(simulated))
+                    yield Component.text("⚡ STRESS ", NamedTextColor.LIGHT_PURPLE)
+                            .append(Component.text(simulated, NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                            .append(Component.text("/" + event.get("targetPlayers") + " simulated players", NamedTextColor.WHITE));
+                else
+                    yield Component.text("⚡ STRESS ", NamedTextColor.LIGHT_PURPLE)
+                            .append(Component.text("test stopped", NamedTextColor.WHITE));
+            }
+            case "CLUSTER_STARTED" ->
+                Component.text("◆ CLUSTER ", NamedTextColor.LIGHT_PURPLE)
+                        .append(Component.text("started on ", NamedTextColor.WHITE))
+                        .append(Component.text(event.get("bind") + ":" + event.get("port"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" (" + event.get("strategy") + ")", NamedTextColor.GRAY));
+            case "NODE_CONNECTED" ->
+                Component.text("◆ NODE ", NamedTextColor.LIGHT_PURPLE)
+                        .append(Component.text(event.get("nodeId"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" connected from " + event.get("host"), NamedTextColor.GRAY));
+            case "NODE_DISCONNECTED" ->
+                Component.text("◇ NODE ", NamedTextColor.YELLOW)
+                        .append(Component.text(event.get("nodeId"), NamedTextColor.WHITE).decorate(TextDecoration.BOLD))
+                        .append(Component.text(" disconnected", NamedTextColor.WHITE));
+            default -> null;
+        };
+
+        if (body == null) return null;
+        return time.append(body);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

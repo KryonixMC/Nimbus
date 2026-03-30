@@ -230,6 +230,12 @@ object ConsoleFormatter {
                 "${colorize("◆ LB", BRIGHT_BLUE)} started on ${BOLD}${event.bind}:${event.port}${RESET} ${DIM}(${event.strategy})${RESET}"
             is NimbusEvent.LoadBalancerStopped ->
                 "${colorize("◇ LB", BLUE)} stopped ${DIM}(${event.reason})${RESET}"
+            is NimbusEvent.StressTestUpdated -> {
+                if (event.simulatedPlayers > 0)
+                    "${colorize("⚡ STRESS", MAGENTA)} ${BOLD}${event.simulatedPlayers}${RESET}/${event.targetPlayers} simulated players"
+                else
+                    "${colorize("⚡ STRESS", MAGENTA)} test stopped"
+            }
             is NimbusEvent.MaintenanceEnabled -> {
                 val scope = if (event.scope == "global") "GLOBAL" else "group ${BOLD}${event.scope}${RESET}"
                 val reason = if (event.reason.isNotEmpty()) " ${DIM}(${event.reason})${RESET}" else ""

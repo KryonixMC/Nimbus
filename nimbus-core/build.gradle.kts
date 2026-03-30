@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
@@ -80,6 +82,25 @@ val sdkJar = tasks.register("copySdkJar", Copy::class) {
     rename { "nimbus-sdk.jar" }
 }
 
+// Download ProtocolLib and embed as resource for auto-deploy to backend servers
+val protocolLibVersion = "5.4.0" // GitHub release, SNAPSHOT in Maven repo
+val downloadProtocolLib = tasks.register("downloadProtocolLib") {
+    val outputFile = layout.buildDirectory.file("resources/main/plugins/ProtocolLib.jar")
+    outputs.file(outputFile)
+    doLast {
+        val url = "https://github.com/dmulloy2/ProtocolLib/releases/download/$protocolLibVersion/ProtocolLib.jar"
+        val target = outputFile.get().asFile
+        target.parentFile.mkdirs()
+        if (!target.exists()) {
+            logger.lifecycle("Downloading ProtocolLib $protocolLibVersion...")
+            URI.create(url).toURL().openStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            logger.lifecycle("Downloaded ProtocolLib to ${target.absolutePath}")
+        }
+    }
+}
+
 // Embed the Signs plugin JAR as a resource (extracted at runtime to plugins/)
 val signsJar = tasks.register("copySignsJar", Copy::class) {
     dependsOn(project(":nimbus-signs").tasks.named("shadowJar"))
@@ -89,7 +110,7 @@ val signsJar = tasks.register("copySignsJar", Copy::class) {
 }
 
 tasks.processResources {
-    dependsOn(pluginJar, sdkJar, signsJar)
+    dependsOn(pluginJar, sdkJar, signsJar, downloadProtocolLib)
 }
 
 tasks.jar {
@@ -101,7 +122,7 @@ tasks.jar {
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
-    dependsOn(pluginJar, sdkJar, signsJar)
+    dependsOn(pluginJar, sdkJar, signsJar, downloadProtocolLib)
 }
 
 kotlin {

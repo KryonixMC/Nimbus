@@ -52,6 +52,10 @@ public class ProxySyncListener {
     private volatile String chatFormat = "{prefix}{player}{suffix} <dark_gray>» <gray>{message}";
     private volatile boolean chatEnabled = true;
 
+    // Stress test: fake player samples for server list hover
+    private volatile java.util.List<String> stressBotSamples = java.util.Collections.emptyList();
+    private volatile int stressSimulatedPlayers = 0;
+
     // Per-player tab overrides (UUID string -> MiniMessage format)
     private final ConcurrentHashMap<String, String> playerTabOverrides = new ConcurrentHashMap<>();
 
@@ -137,6 +141,21 @@ public class ProxySyncListener {
             refreshPlayerTab(uuid);
         });
 
+        // Stress test: fake player samples in server list
+        eventStream.onEvent("STRESS_TEST_UPDATED", e -> {
+            String simulated = e.get("simulatedPlayers");
+            if (simulated != null) {
+                try { stressSimulatedPlayers = Integer.parseInt(simulated); } catch (NumberFormatException ignored) {}
+            }
+            String samples = e.get("sampleNames");
+            if (samples != null && !samples.isEmpty()) {
+                stressBotSamples = java.util.Arrays.asList(samples.split(","));
+            } else {
+                stressBotSamples = java.util.Collections.emptyList();
+            }
+            logger.debug("Stress test update: {} simulated players, {} samples", stressSimulatedPlayers, stressBotSamples.size());
+        });
+
         // Refresh display cache when permissions change
         eventStream.onEvent("PERMISSION_GROUP_UPDATED", e -> refreshAllDisplayInfo());
         eventStream.onEvent("PLAYER_PERMISSIONS_UPDATED", e -> {
@@ -194,7 +213,7 @@ public class ProxySyncListener {
         MaintenanceHandler mh = maintenanceHandler;
         if (mh != null && mh.isGlobalEnabled()) {
             // Maintenance mode: custom MOTD, fake protocol version, hide player count
-            int online = server.getPlayerCount() + motdPlayerCountOffset;
+            int online = server.getPlayerCount() + motdPlayerCountOffset + stressSimulatedPlayers;
             int max = motdMaxPlayers > 0 ? motdMaxPlayers : ping.getPlayers().map(ServerPing.Players::getMax).orElse(0);
 
             String l1 = replacePlaceholders(mh.getMotdLine1(), null, online, max);
@@ -223,8 +242,8 @@ public class ProxySyncListener {
             return;
         }
 
-        // Normal mode
-        int online = server.getPlayerCount() + motdPlayerCountOffset;
+        // Normal mode — add stress test simulated players to the count
+        int online = server.getPlayerCount() + motdPlayerCountOffset + stressSimulatedPlayers;
         int max = motdMaxPlayers > 0 ? motdMaxPlayers : ping.getPlayers().map(ServerPing.Players::getMax).orElse(0);
 
         String l1 = replacePlaceholders(motdLine1, null, online, max);
@@ -240,13 +259,23 @@ public class ProxySyncListener {
             builder.maximumPlayers(motdMaxPlayers);
         }
 
+        // Add fake player samples from stress test to server list hover
+        if (stressSimulatedPlayers > 0 && !stressBotSamples.isEmpty()) {
+            builder.clearSamplePlayers();
+            for (String botName : stressBotSamples) {
+                builder.samplePlayers(new ServerPing.SamplePlayer(
+                        botName, UUID.randomUUID()
+                ));
+            }
+        }
+
         event.setPing(builder.build());
     }
 
     // ── Tab List Application ────────────────────────────────────────
 
     private void applyTabList(Player player) {
-        int online = server.getPlayerCount();
+        int online = server.getPlayerCount() + stressSimulatedPlayers;
         int max = server.getConfiguration().getShowMaxPlayers();
 
         String header = replacePlaceholders(tabHeader, player, online, max);

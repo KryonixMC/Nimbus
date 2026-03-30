@@ -295,6 +295,17 @@ private fun NimbusEvent.toEventMessage(): EventMessage {
             timestamp = timestamp.toString(),
             data = mapOf("reason" to reason)
         )
+        is NimbusEvent.StressTestUpdated -> EventMessage(
+            type = "STRESS_TEST_UPDATED",
+            timestamp = timestamp.toString(),
+            data = buildMap {
+                put("simulatedPlayers", simulatedPlayers.toString())
+                put("targetPlayers", targetPlayers.toString())
+                if (sampleNames.isNotEmpty()) put("sampleNames", sampleNames.joinToString(","))
+                if (targetGroup != null) put("targetGroup", targetGroup)
+                if (perService.isNotEmpty()) put("perService", perService.entries.joinToString(",") { "${it.key}=${it.value}" })
+            }
+        )
         is NimbusEvent.MaintenanceEnabled -> EventMessage(
             type = "MAINTENANCE_ENABLED",
             timestamp = timestamp.toString(),

@@ -12,6 +12,7 @@ import dev.nimbus.permissions.PermissionManager
 import dev.nimbus.service.CompatibilityChecker
 import dev.nimbus.service.ServiceManager
 import dev.nimbus.service.ServiceRegistry
+import dev.nimbus.stress.StressTestManager
 import dev.nimbus.template.SoftwareResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -41,7 +42,8 @@ class NimbusConsole(
     private val proxySyncManager: dev.nimbus.proxy.ProxySyncManager? = null,
     private val nodeManager: NodeManager? = null,
     private val loadBalancer: TcpLoadBalancer? = null,
-    private val configPath: Path? = null
+    private val configPath: Path? = null,
+    private val stressTestManager: StressTestManager? = null
 ) {
 
     private val logger = LoggerFactory.getLogger(NimbusConsole::class.java)
@@ -123,6 +125,9 @@ class NimbusConsole(
             dispatcher.register(LbCommand(config, configPath, loadBalancer, registry, groupManager))
             dispatcher.register(ClusterCommand(config, configPath, nodeManager, registry))
         }
+        if (stressTestManager != null) {
+            dispatcher.register(StressCommand(stressTestManager, registry, groupManager))
+        }
         dispatcher.register(ClearCommand(terminal))
         dispatcher.register(ShutdownCommand(serviceManager, registry))
 
@@ -134,6 +139,12 @@ class NimbusConsole(
 
         eventListenerJob = scope.launch {
             eventBus.subscribe().collect { event ->
+                // Suppress stress test noise to avoid console spam
+                if (event is NimbusEvent.PlayerConnected && event.playerName.startsWith("StressBot-")) return@collect
+                if (event is NimbusEvent.PlayerDisconnected && event.playerName.startsWith("StressBot-")) return@collect
+                if (event is NimbusEvent.StressTestUpdated) return@collect
+                if (event is NimbusEvent.MotdUpdated && stressTestManager?.isActive() == true) return@collect
+
                 val formatted = ConsoleFormatter.formatEvent(event)
                 if (eventsPaused) {
                     synchronized(eventBuffer) { eventBuffer.add(formatted) }

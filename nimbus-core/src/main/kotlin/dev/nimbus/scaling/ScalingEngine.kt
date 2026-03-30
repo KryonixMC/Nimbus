@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import dev.nimbus.stress.StressTestManager
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -29,6 +30,9 @@ class ScalingEngine(
     private val checkIntervalMs: Long = 5000
 ) {
     private val logger = LoggerFactory.getLogger(ScalingEngine::class.java)
+
+    /** Optional stress test manager — when set, services with active overrides skip pinging. */
+    var stressTestManager: StressTestManager? = null
 
     /** Tracks when each service became empty (for idle timeout). Keyed by service name. */
     private val idleSince = ConcurrentHashMap<String, Instant>()
@@ -169,6 +173,9 @@ class ScalingEngine(
         coroutineScope {
             localServices.map { service ->
                 async(Dispatchers.IO) {
+                    // Skip services with simulated player counts from stress testing
+                    if (stressTestManager?.isOverridden(service.name) == true) return@async
+
                     val result = ServerListPing.ping(service.host, service.port, timeout = 3000)
                     if (result != null) {
                         service.playerCount = result.onlinePlayers

@@ -48,6 +48,12 @@ public class NimbusApiClient {
         return execute(builder.build());
     }
 
+    public CompletableFuture<ApiResult> postJson(String path, String jsonBody) {
+        HttpRequest.Builder builder = buildRequest(path);
+        builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+        return execute(builder.build());
+    }
+
     public CompletableFuture<ApiResult> put(String path, Object body) {
         HttpRequest.Builder builder = buildRequest(path);
         if (body != null) {

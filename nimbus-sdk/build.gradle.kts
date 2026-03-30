@@ -4,6 +4,7 @@ plugins {
 
 repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.dmulloy2.net/repository/public/")
 }
 
 dependencies {
@@ -12,6 +13,9 @@ dependencies {
 
     // Paper API: compileOnly for the plugin main class (provided by Paper at runtime)
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+
+    // ProtocolLib: compileOnly for fake player packets (provided at runtime as a plugin)
+    compileOnly("com.comphenix.protocol:ProtocolLib:5.4.0-SNAPSHOT")
 }
 
 java {

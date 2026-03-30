@@ -61,11 +61,26 @@ public class NimbusBridgePlugin {
         // Register event listeners (maintenance handler may be null if no bridge config)
         server.getEventManager().register(this, new ConnectionListener(server, logger, () -> maintenanceHandler));
 
+        // Unsubscribe players from event feed on disconnect
+        server.getEventManager().register(this, new Object() {
+            @Subscribe
+            public void onDisconnect(DisconnectEvent event) {
+                if (cloudCommand != null) {
+                    cloudCommand.unsubscribePlayer(event.getPlayer().getUniqueId());
+                }
+            }
+        });
+
         // Register permission provider (if bridge config exists)
         registerPermissionProvider();
 
         // Register proxy sync (tab list + MOTD)
         registerProxySync();
+
+        // Register event stream on cloud command for /cloud events
+        if (cloudCommand != null && sharedEventStream != null) {
+            cloudCommand.registerEventStream(sharedEventStream);
+        }
 
         // Connect shared event stream (after all handlers are registered)
         connectSharedEventStream();
@@ -259,12 +274,6 @@ public class NimbusBridgePlugin {
                     .build();
                 commandManager.register(meta, cloudCommand);
             }
-
-            // Register hidden /cloud shutdown-confirm
-            var confirmMeta = commandManager.metaBuilder("cloud-shutdown-confirm")
-                .plugin(this)
-                .build();
-            commandManager.register(confirmMeta, new ShutdownConfirmCommand(cloudCommand));
 
             logger.info("Nimbus Bridge loaded — /cloud, /nimbus registered (API: {})", config.getApiUrl());
         } catch (Exception e) {
@@ -467,25 +476,4 @@ public class NimbusBridgePlugin {
         }
     }
 
-    /**
-     * Hidden command that handles the shutdown confirmation click.
-     */
-    private static class ShutdownConfirmCommand implements SimpleCommand {
-
-        private final CloudCommand cloudCommand;
-
-        ShutdownConfirmCommand(CloudCommand cloudCommand) {
-            this.cloudCommand = cloudCommand;
-        }
-
-        @Override
-        public boolean hasPermission(Invocation invocation) {
-            return invocation.source().hasPermission("nimbus.cloud.shutdown");
-        }
-
-        @Override
-        public void execute(Invocation invocation) {
-            cloudCommand.executeShutdown(invocation.source());
-        }
-    }
 }

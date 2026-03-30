@@ -126,7 +126,7 @@ class AgentRuntime(
             is ClusterMessage.StartService -> {
                 scope.launch {
                     // Ensure template is available
-                    val templateReady = templateDownloader.ensureTemplate(msg.templateName, msg.templateHash)
+                    val templateReady = templateDownloader.ensureTemplate(msg.templateName, msg.templateHash, msg.software)
                     if (!templateReady) {
                         logger.error("Cannot start '{}': template '{}' download failed", msg.serviceName, msg.templateName)
                         session.send(Frame.Text(clusterJson.encodeToString(ClusterMessage.serializer(),

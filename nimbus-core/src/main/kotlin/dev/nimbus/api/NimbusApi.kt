@@ -48,7 +48,8 @@ class NimbusApi(
     private val configPath: Path,
     private val nodeManager: NodeManager? = null,
     private val loadBalancer: TcpLoadBalancer? = null,
-    private val templatesDir: Path = baseDir.resolve("templates")
+    private val templatesDir: Path = baseDir.resolve("templates"),
+    private val stressTestManager: dev.nimbus.stress.StressTestManager? = null
 ) {
     private val logger = LoggerFactory.getLogger(NimbusApi::class.java)
 
@@ -206,6 +207,9 @@ class NimbusApi(
                 displayRoutes(displayManager)
                 proxySyncRoutes(proxySyncManager, eventBus)
                 maintenanceRoutes(proxySyncManager, eventBus)
+                if (stressTestManager != null) {
+                    stressRoutes(stressTestManager)
+                }
                 fileRoutes(scopeRoots, readOnlyScopes, maxUploadBytes)
                 configRoutes(config, configPath)
                 if (nodeManager != null || loadBalancer != null) {

@@ -573,6 +573,34 @@ data class MaintenanceWhitelistRequest(
     val entry: String
 )
 
+// ── Stress Test DTOs ──────────────────────────────────────────────
+
+@Serializable
+data class StressStatusResponse(
+    val active: Boolean,
+    val group: String? = null,
+    val currentPlayers: Int = 0,
+    val targetPlayers: Int = 0,
+    val totalCapacity: Int = 0,
+    val overflow: Int = 0,
+    val elapsedSeconds: Long = 0,
+    val services: Map<String, Int> = emptyMap(),
+    val proxyServices: Map<String, Int> = emptyMap()
+)
+
+@Serializable
+data class StressStartRequest(
+    val players: Int,
+    val group: String? = null,
+    val rampSeconds: Long = 0
+)
+
+@Serializable
+data class StressRampRequest(
+    val players: Int,
+    val durationSeconds: Long = 30
+)
+
 // ── Event DTOs (for WebSocket) ──────────────────────────────────────
 
 @Serializable

@@ -16,6 +16,7 @@ import dev.nimbus.permissions.PermissionManager
 import dev.nimbus.protocol.ClusterMessage
 import dev.nimbus.scaling.ScalingEngine
 import dev.nimbus.scaling.VelocityUpdater
+import dev.nimbus.stress.StressTestManager
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import dev.nimbus.service.PortAllocator
@@ -236,6 +237,9 @@ fun nimbusMain() = runBlocking {
         scope = scope,
         checkIntervalMs = config.controller.heartbeatInterval
     )
+    val stressTestManager = StressTestManager(registry, groupManager, eventBus, proxySyncManager, scope)
+    scalingEngine.stressTestManager = stressTestManager
+
     val scalingJob = scalingEngine.start()
     logger.info("Scaling engine started (interval: {}ms)", config.controller.heartbeatInterval)
 
@@ -264,7 +268,8 @@ fun nimbusMain() = runBlocking {
         configPath = configPath,
         nodeManager = nodeManager,
         loadBalancer = loadBalancer,
-        templatesDir = templatesDir
+        templatesDir = templatesDir,
+        stressTestManager = stressTestManager
     )
 
     // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)
@@ -312,7 +317,8 @@ fun nimbusMain() = runBlocking {
         proxySyncManager = proxySyncManager,
         nodeManager = nodeManager,
         loadBalancer = loadBalancer,
-        configPath = configPath
+        configPath = configPath,
+        stressTestManager = stressTestManager
     )
     console.init()
 

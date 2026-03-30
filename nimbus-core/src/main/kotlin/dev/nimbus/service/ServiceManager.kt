@@ -157,7 +157,7 @@ class ServiceManager(
     ): ClusterMessage.StartService {
         val templatesDir = Path(config.paths.templates)
         val templateDir = templatesDir.resolve(groupConfig.template)
-        val templateHash = computeTemplateHash(templateDir)
+        val templateHash = computeTemplateHash(templateDir, groupConfig.software)
         val forwardingMode = compatibilityChecker.determineForwardingMode()
         val forwardingSecret = computeForwardingSecret()
         val isModded = groupConfig.software in listOf(
@@ -238,16 +238,33 @@ class ServiceManager(
         registry.unregister(service.name)
     }
 
-    private fun computeTemplateHash(templateDir: Path): String {
+    private fun computeTemplateHash(templateDir: Path, software: ServerSoftware): String {
         if (!templateDir.exists()) return ""
         val digest = MessageDigest.getInstance("SHA-256")
-        Files.walk(templateDir).use { stream ->
+        val templatesDir = Path(config.paths.templates)
+
+        // Hash global templates first (must match TemplateRoutes order)
+        val vanillaBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PURPUR, ServerSoftware.VELOCITY)
+        if (vanillaBased) {
+            hashDir(digest, templatesDir.resolve("global"))
+        }
+        if (software == ServerSoftware.VELOCITY) {
+            hashDir(digest, templatesDir.resolve("global_proxy"))
+        }
+
+        // Then hash the group template
+        hashDir(digest, templateDir)
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun hashDir(digest: MessageDigest, dir: Path) {
+        if (!dir.exists()) return
+        Files.walk(dir).use { stream ->
             stream.filter { Files.isRegularFile(it) }.sorted().forEach { file ->
-                digest.update(templateDir.relativize(file).toString().toByteArray())
+                digest.update(dir.relativize(file).toString().toByteArray())
                 digest.update(Files.readAllBytes(file))
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private suspend fun monitorProcess(service: Service, handle: ServiceHandle, groupName: String, restartOnCrash: Boolean, maxRestarts: Int) {

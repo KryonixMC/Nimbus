@@ -19,6 +19,7 @@ public class NimbusSdkPlugin extends JavaPlugin implements Listener {
     private NimbusPermissionHandler permissionHandler;
     private NimbusChatRenderer chatRenderer;
     private NimbusNameTagHandler nameTagHandler;
+    private Object stressBotManager; // StressBotManager — stored as Object to avoid loading ProtocolLib classes early
 
     @Override
     public void onEnable() {
@@ -44,6 +45,24 @@ public class NimbusSdkPlugin extends JavaPlugin implements Listener {
                     nameTagHandler = new NimbusNameTagHandler(this, apiUrl, token);
                     nameTagHandler.start();
 
+                    // Start stress bot manager (spawns fake players during stress tests)
+                    // Only initialize if ProtocolLib is present — use reflection to avoid
+                    // loading ProtocolLib classes when it's not installed
+                    if (getServer().getPluginManager().getPlugin("ProtocolLib") != null) {
+                        try {
+                            // Use our own ClassLoader to avoid Paper's reflection rewriter
+                            // intercepting and trying to remap ProtocolLib classes
+                            Class<?> sbmClass = getClassLoader().loadClass("dev.nimbus.sdk.StressBotManager");
+                            Object sbm = sbmClass.getConstructor(JavaPlugin.class).newInstance(this);
+                            sbmClass.getMethod("start").invoke(sbm);
+                            stressBotManager = sbm;
+                        } catch (Exception e) {
+                            getLogger().warning("Failed to initialize StressBotManager: " + e.getMessage());
+                        }
+                    } else {
+                        getLogger().info("ProtocolLib not found — stress test bots disabled");
+                    }
+
                     getServer().getPluginManager().registerEvents(this, this);
                 }
             } catch (Exception e) {
@@ -56,6 +75,9 @@ public class NimbusSdkPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        if (stressBotManager != null) {
+            try { stressBotManager.getClass().getMethod("shutdown").invoke(stressBotManager); } catch (Exception ignored) {}
+        }
         if (permissionHandler != null) {
             permissionHandler.shutdown();
         }
@@ -70,6 +92,9 @@ public class NimbusSdkPlugin extends JavaPlugin implements Listener {
         }
         if (nameTagHandler != null) {
             nameTagHandler.onJoin(event.getPlayer());
+        }
+        if (stressBotManager != null) {
+            try { stressBotManager.getClass().getMethod("onPlayerJoin", org.bukkit.entity.Player.class).invoke(stressBotManager, event.getPlayer()); } catch (Exception ignored) {}
         }
     }
 

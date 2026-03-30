@@ -5,3 +5,5 @@ api-version: '1.20'
 description: Nimbus Cloud SDK — provides API client for Nimbus-managed servers
 author: Nimbus
 load: STARTUP
+softdepend:
+  - ProtocolLib

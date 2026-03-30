@@ -21,7 +21,7 @@ class TemplateDownloader(
     private val client = HttpClient(CIO)
     private val templateHashes = mutableMapOf<String, String>()
 
-    suspend fun ensureTemplate(templateName: String, expectedHash: String): Boolean {
+    suspend fun ensureTemplate(templateName: String, expectedHash: String, software: String = ""): Boolean {
         val templateDir = templatesDir.resolve(templateName)
 
         // Check if we already have this version
@@ -31,9 +31,10 @@ class TemplateDownloader(
             return true
         }
 
-        // Download from controller
+        // Download from controller (include software so global templates are bundled)
         logger.info("Downloading template '{}' from controller...", templateName)
-        val url = "$controllerBaseUrl/api/templates/$templateName/download?token=$token"
+        val softwareParam = if (software.isNotBlank()) "&software=$software" else ""
+        val url = "$controllerBaseUrl/api/templates/$templateName/download?token=$token$softwareParam"
 
         val response = client.get(url)
         if (response.status != HttpStatusCode.OK) {

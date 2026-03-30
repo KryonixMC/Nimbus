@@ -1,5 +1,6 @@
 package dev.nimbus.console
 
+import dev.nimbus.console.commands.ShutdownCommand
 import dev.nimbus.group.GroupManager
 import dev.nimbus.service.ServiceRegistry
 import org.slf4j.LoggerFactory
@@ -59,8 +60,9 @@ class CommandDispatcher {
             println(ConsoleFormatter.error("Error executing '$commandName': ${e.message}"))
         }
 
-        // Return false when shutdown was invoked
-        return commandName != "shutdown"
+        // Exit REPL when shutdown command signals it
+        if (command is ShutdownCommand && command.shouldExit) return false
+        return true
     }
 
     fun getCommands(): List<Command> = commands.values.toList()
@@ -156,6 +158,26 @@ class CommandDispatcher {
                         3 -> when (parts[1].lowercase()) {
                             "strategy" -> listOf("least-players", "round-robin")
                                 .filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            else -> emptyList()
+                        }
+                        else -> emptyList()
+                    }
+                }
+                "stress" -> {
+                    when (parts.size) {
+                        2 -> listOf("start", "stop", "ramp", "status")
+                            .filter { it.startsWith(argPrefix, ignoreCase = true) }
+                        3 -> when (parts[1].lowercase()) {
+                            "start" -> emptyList() // numeric, no completion
+                            "ramp" -> emptyList()
+                            else -> emptyList()
+                        }
+                        4 -> when (parts[1].lowercase()) {
+                            "start" -> {
+                                // Complete group name after player count
+                                val groups = groupManager?.getAllGroups()?.map { it.name } ?: emptyList()
+                                groups.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            }
                             else -> emptyList()
                         }
                         else -> emptyList()

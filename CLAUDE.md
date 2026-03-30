@@ -38,7 +38,7 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ├── Nimbus.kt              # Entry point, bootstrap
 ├── api/                   # Ktor REST API + WebSocket (v0.2)
 ├── config/                # TOML config loading (NimbusConfig, GroupConfig)
-├── console/               # JLine3 REPL, CommandDispatcher, 24 commands
+├── console/               # JLine3 REPL, CommandDispatcher, 25 commands
 ├── database/              # Exposed ORM: DatabaseManager, Tables, MetricsCollector
 ├── event/                 # Coroutine-based EventBus + sealed Events
 ├── group/                 # ServerGroup runtime state, GroupManager
@@ -46,6 +46,7 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ├── proxy/                 # ProxySyncManager (tab list, MOTD, chat, maintenance)
 ├── service/               # Service lifecycle, ProcessHandle, PortAllocator, ServerListPing
 ├── setup/                 # First-run interactive SetupWizard
+├── stress/                # StressTestManager (simulated player load testing)
 ├── template/              # TemplateManager, ConfigPatcher, SoftwareResolver (auto-download)
 └── velocity/              # VelocityConfigGen (auto-manage proxy server list)
 ```
@@ -70,6 +71,8 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 - EULA auto-accepted for Paper/Purpur templates
 - Process ready detection: watches stdout for "Done" pattern
 - Graceful shutdown order: game servers → lobbies → proxies
+- Shutdown requires confirmation: `shutdown` then `shutdown confirm` within 30s
+- ProtocolLib auto-deployed to backend servers (embedded in JAR, tracked via `.nimbus-plugins`)
 
 ## Code Style
 
@@ -81,6 +84,43 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 ## API (v0.2)
 
 - Bearer token auth (`Authorization: Bearer <token>`)
-- REST: `/api/services`, `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/reload`, `/api/shutdown`
+- REST: `/api/services`, `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/stress`, `/api/reload`, `/api/shutdown`
 - WebSocket: `/api/events` (live events), `/api/services/{name}/console` (bidirectional)
 - `/api/health` is always public (no auth)
+
+## Stress Testing
+
+Simulates player load across backend servers without real Minecraft clients.
+
+### Console Commands
+```
+stress start <players> [group] [--ramp <seconds>]   # Start stress test
+stress stop                                          # Stop and clean up
+stress ramp <players> [--duration <seconds>]         # Adjust target mid-test
+stress status                                        # Show live status
+```
+
+### In-Game (Bridge)
+```
+/cloud stress start <players> [group] [rampSeconds]
+/cloud stress stop
+/cloud stress ramp <players> [durationSeconds]
+/cloud stress status
+```
+
+### Behavior
+- Only backend groups receive simulated players (proxy groups are excluded)
+- Each service is capped at its `max_players` config value
+- ScalingEngine reacts naturally (starts new instances up to `max_instances`)
+- Proxy services auto-reflect total backend player count
+- Fake player entities appear in tab list on backend servers via ProtocolLib
+- `StressBot-*` events are suppressed from the console to avoid spam
+- Template download to agent nodes includes global plugins (SDK, ProtocolLib)
+
+### REST API
+```
+GET  /api/stress              # Status (active, players, capacity, per-service)
+POST /api/stress/start        # Body: {"players": 100, "group": "Lobby", "rampSeconds": 30}
+POST /api/stress/stop         # Stop active test
+POST /api/stress/ramp         # Body: {"players": 200, "durationSeconds": 60}
+```
