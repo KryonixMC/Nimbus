@@ -139,20 +139,22 @@ download_nimbus() {
         exit 1
     fi
 
+    # Extract pre-release flags (parallel array)
+    local -a prereleases
+    mapfile -t prereleases < <(echo "$releases_json" | grep -oP '"prerelease"\s*:\s*\K(true|false)' || true)
+
     # Display available versions
     echo ""
     info "Available versions:"
     local i=1
-    for ver in "${versions[@]}"; do
+    for idx in "${!versions[@]}"; do
+        local ver="${versions[$idx]}"
         local pre=""
-        # Check if this version is a pre-release
-        local is_pre
-        is_pre=$(echo "$releases_json" | grep -A2 "\"tag_name\": \"$ver\"" | grep -oP '"prerelease"\s*:\s*\K(true|false)' | head -1)
-        if [[ "$is_pre" == "true" ]]; then
+        if [[ "${prereleases[$idx]:-}" == "true" ]]; then
             pre=" ${DIM}(pre-release)${RESET}"
         fi
         echo -e "    ${CYAN}${i})${RESET}  ${BOLD}${ver}${RESET}${pre}"
-        ((i++))
+        i=$((i + 1))
     done
     echo ""
 
