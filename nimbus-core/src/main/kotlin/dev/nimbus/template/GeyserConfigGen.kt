@@ -33,6 +33,9 @@ class GeyserConfigGen {
             appendLine("  address: 127.0.0.1")
             appendLine("  port: $javaPort")
             appendLine("  auth-type: floodgate")
+            appendLine("passthrough-motd: true")
+            appendLine("passthrough-player-counts: true")
+            appendLine("passthrough-protocol-name: true")
         })
 
         logger.debug("Generated Geyser config: Bedrock UDP {} → Java TCP {}", bedrockPort, javaPort)

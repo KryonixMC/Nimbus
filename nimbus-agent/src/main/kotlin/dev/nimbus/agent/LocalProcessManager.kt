@@ -62,6 +62,9 @@ class LocalProcessManager(
                     appendLine("  address: 127.0.0.1")
                     appendLine("  port: ${msg.port}")
                     appendLine("  auth-type: floodgate")
+                    appendLine("passthrough-motd: true")
+                    appendLine("passthrough-player-counts: true")
+                    appendLine("passthrough-protocol-name: true")
                 })
                 logger.info("Generated Geyser config: Bedrock UDP {} → Java TCP {}", msg.bedrockPort, msg.port)
             }

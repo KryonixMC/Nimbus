@@ -421,11 +421,26 @@ The `list` command shows both TCP and UDP ports for proxy services:
 </pre>
 </div>
 
+### MOTD, Server Icon & Player Count
+
+Geyser is configured to **pass through** the Java proxy's MOTD, player counts, and protocol name to Bedrock clients. This means Bedrock players see the same server list information as Java players — including your custom MOTD from the [proxy sync](/guide/proxy-setup#proxy-synchronization) configuration and the server icon.
+
+No additional configuration is needed. The passthrough is enabled automatically in the generated Geyser config.
+
+### Load Balancer + Bedrock
+
+The built-in TCP load balancer handles **Java connections only**. Bedrock UDP traffic is not load-balanced. Instead, when both the load balancer and Bedrock support are enabled:
+
+- The **first proxy instance** receives the standard Bedrock port (19132) — this is the port Bedrock players connect to
+- Additional proxy instances get incremented ports (19133, 19134, ...) but typically only the first one matters for Bedrock
+- **Java players** are distributed across all proxies by the TCP load balancer as usual
+
+This approach works well because Bedrock player counts are typically much smaller than Java. If you need full Bedrock load balancing, use an external UDP-capable load balancer (e.g., HAProxy with UDP support).
+
 ### Limitations
 
 - **Modded backends** — Floodgate is only deployed to Paper/Purpur/Folia backends. Fabric/Forge/NeoForge servers do not receive Floodgate, so backend plugins won't identify Bedrock players on modded servers. Players can still connect through the proxy.
 - **Gameplay differences** — Bedrock and Java have different combat systems, redstone behavior, and some items/blocks are mapped to the closest equivalent. See [GeyserMC docs](https://geysermc.org/) for details.
-- **UDP Load Balancer** — The built-in TCP load balancer does not support Bedrock UDP traffic. For multi-proxy setups with Bedrock, use an external UDP-capable load balancer.
 
 ::: tip
 Bedrock players authenticate via Xbox Live. Their names are prefixed with `.` by default (e.g., `.BedrockPlayer123`) to avoid name collisions with Java players.
@@ -444,7 +459,7 @@ max_instances = 4
 Each proxy instance receives the same bridge plugin and sync configuration. All proxies connect to the same Nimbus API and receive the same real-time events.
 
 ::: warning
-Multiple proxies require an external load balancer. Nimbus does not include a TCP proxy -- it only manages the Velocity instances.
+Multiple proxies require an external load balancer for Java traffic. With Bedrock enabled, each proxy instance gets its own UDP port — only the first proxy (port 19132) is typically reachable by Bedrock players unless you configure an external UDP load balancer.
 :::
 
 ## Next steps

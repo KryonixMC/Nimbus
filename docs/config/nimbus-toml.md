@@ -303,7 +303,7 @@ When Bedrock support is enabled, Nimbus:
 1. **Downloads Geyser** (Velocity plugin) — Translates Bedrock protocol to Java protocol inside the proxy
 2. **Downloads Floodgate** (Velocity + Paper plugin) — Allows Bedrock players to authenticate via Xbox Live without a Java account
 3. **Manages `key.pem`** — Floodgate's encryption key is generated once and distributed to all proxy and backend instances automatically
-4. **Configures Geyser** — Each proxy instance gets a unique Bedrock UDP port and auto-generated Geyser config
+4. **Configures Geyser** — Each proxy instance gets a unique Bedrock UDP port and auto-generated Geyser config with MOTD, player count, and server icon passthrough enabled
 5. **Allocates UDP ports** — Separate from TCP ports, starting at `base_port`
 
 ### Architecture
