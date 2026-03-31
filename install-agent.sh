@@ -156,7 +156,7 @@ download_agent() {
 
     # Prompt for version selection
     local selected_idx
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx </dev/tty
     selected_idx="${selected_idx:-1}"
 
     if ! [[ "$selected_idx" =~ ^[0-9]+$ ]] || [[ "$selected_idx" -lt 1 ]] || [[ "$selected_idx" -gt ${#versions[@]} ]]; then
@@ -201,16 +201,16 @@ create_default_config() {
     info "Creating default agent config..."
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller host [127.0.0.1]: ")" controller_host
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller host [127.0.0.1]: ")" controller_host </dev/tty
     controller_host="${controller_host:-127.0.0.1}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller port [8443]: ")" controller_port
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller port [8443]: ")" controller_port </dev/tty
     controller_port="${controller_port:-8443}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Node ID [$(hostname)]: ")" node_id
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Node ID [$(hostname)]: ")" node_id </dev/tty
     node_id="${node_id:-$(hostname)}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Auth token: ")" auth_token
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Auth token: ")" auth_token </dev/tty
 
     sudo tee "$config_file" >/dev/null <<EOF
 [agent]
@@ -251,7 +251,7 @@ create_systemd_service() {
     fi
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Create systemd service for auto-start? [Y/n]: ")" create_service
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Create systemd service for auto-start? [Y/n]: ")" create_service </dev/tty
     if [[ "${create_service,,}" == "n" || "${create_service,,}" == "no" ]]; then
         return
     fi
@@ -288,7 +288,7 @@ EOF
     success "Systemd service created and enabled"
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Start agent now? [Y/n]: ")" start_now
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Start agent now? [Y/n]: ")" start_now </dev/tty
     if [[ "${start_now,,}" != "n" && "${start_now,,}" != "no" ]]; then
         sudo systemctl start nimbus-agent.service
         success "Agent started"

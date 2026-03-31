@@ -158,7 +158,7 @@ download_nimbus() {
 
     # Prompt for version selection
     local selected_idx
-    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx
+    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx </dev/tty
     selected_idx="${selected_idx:-1}"
 
     # Validate selection
@@ -239,7 +239,7 @@ create_systemd_service() {
     fi
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Create systemd service for auto-start? [y/N]: ")" create_service
+    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Create systemd service for auto-start? [y/N]: ")" create_service </dev/tty
     if [[ "${create_service,,}" != "y" && "${create_service,,}" != "yes" ]]; then
         return
     fi
