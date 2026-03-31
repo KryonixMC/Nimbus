@@ -95,7 +95,7 @@ export default defineConfig({
           items: [
             { text: 'SDK (nimbus-sdk)', link: '/developer/sdk' },
             { text: 'Bridge (nimbus-bridge)', link: '/developer/bridge' },
-            { text: 'Signs (nimbus-signs)', link: '/developer/signs' },
+            { text: 'Display (nimbus-display)', link: '/developer/signs' },
             { text: 'Permissions (nimbus-perms)', link: '/developer/perms' },
           ],
         },
