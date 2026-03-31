@@ -3,6 +3,13 @@ set -euo pipefail
 
 # ── Nimbus Agent Installer ──────────────────────────────────────
 # Usage: curl -fsSL https://raw.githubusercontent.com/jonax1337/Nimbus/main/install-agent.sh | bash
+
+# Ensure interactive prompts work when piped via curl | bash
+if [[ -e /dev/tty ]]; then
+    TTY=/dev/tty
+else
+    TTY=/dev/stdin
+fi
 # ────────────────────────────────────────────────────────────────
 
 REPO_OWNER="jonax1337"
@@ -159,7 +166,7 @@ download_agent() {
 
     # Prompt for version selection
     local selected_idx
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx <"$TTY"
     selected_idx="${selected_idx:-1}"
 
     if ! [[ "$selected_idx" =~ ^[0-9]+$ ]] || [[ "$selected_idx" -lt 1 ]] || [[ "$selected_idx" -gt ${#versions[@]} ]]; then
@@ -204,16 +211,16 @@ create_default_config() {
     info "Creating default agent config..."
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller host [127.0.0.1]: ")" controller_host </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller host [127.0.0.1]: ")" controller_host <"$TTY"
     controller_host="${controller_host:-127.0.0.1}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller port [8443]: ")" controller_port </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Controller port [8443]: ")" controller_port <"$TTY"
     controller_port="${controller_port:-8443}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Node ID [$(hostname)]: ")" node_id </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Node ID [$(hostname)]: ")" node_id <"$TTY"
     node_id="${node_id:-$(hostname)}"
 
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Auth token: ")" auth_token </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Auth token: ")" auth_token <"$TTY"
 
     sudo tee "$config_file" >/dev/null <<EOF
 [agent]
@@ -254,7 +261,7 @@ create_systemd_service() {
     fi
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Create systemd service for auto-start? [Y/n]: ")" create_service </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Create systemd service for auto-start? [Y/n]: ")" create_service <"$TTY"
     if [[ "${create_service,,}" == "n" || "${create_service,,}" == "no" ]]; then
         return
     fi
@@ -291,7 +298,7 @@ EOF
     success "Systemd service created and enabled"
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Start agent now? [Y/n]: ")" start_now </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus-agent]${RESET} Start agent now? [Y/n]: ")" start_now <"$TTY"
     if [[ "${start_now,,}" != "n" && "${start_now,,}" != "no" ]]; then
         sudo systemctl start nimbus-agent.service
         success "Agent started"

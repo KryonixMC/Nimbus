@@ -3,6 +3,13 @@ set -euo pipefail
 
 # ── Nimbus Cloud Installer ──────────────────────────────────────
 # Usage: curl -fsSL https://raw.githubusercontent.com/jonax1337/Nimbus/main/install.sh | bash
+
+# Ensure interactive prompts work when piped via curl | bash
+if [[ -e /dev/tty ]]; then
+    TTY=/dev/tty
+else
+    TTY=/dev/stdin
+fi
 # ────────────────────────────────────────────────────────────────
 
 REPO_OWNER="jonax1337"
@@ -160,7 +167,7 @@ download_nimbus() {
 
     # Prompt for version selection
     local selected_idx
-    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Select version ${DIM}[1]${RESET}: ")" selected_idx <"$TTY"
     selected_idx="${selected_idx:-1}"
 
     # Validate selection
@@ -241,7 +248,7 @@ create_systemd_service() {
     fi
 
     echo ""
-    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Create systemd service for auto-start? [y/N]: ")" create_service </dev/tty
+    read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Create systemd service for auto-start? [y/N]: ")" create_service <"$TTY"
     if [[ "${create_service,,}" != "y" && "${create_service,,}" != "yes" ]]; then
         return
     fi
