@@ -259,12 +259,9 @@ create_systemd_service() {
         return
     fi
 
-    # Create nimbus user if it doesn't exist
-    if ! id -u nimbus &>/dev/null; then
-        sudo useradd -r -m -d "$INSTALL_DIR" -s /bin/bash nimbus
-        info "Created 'nimbus' system user"
-    fi
-    sudo chown -R nimbus:nimbus "$INSTALL_DIR"
+    # Use the invoking user for the service (not a separate system user)
+    local service_user="${SUDO_USER:-$(whoami)}"
+    sudo chown -R "$service_user:$(id -gn "$service_user")" "$INSTALL_DIR"
 
     sudo tee /etc/systemd/system/nimbus.service >/dev/null <<EOF
 [Unit]
@@ -273,7 +270,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=nimbus
+User=$service_user
 WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/start.sh
 Restart=on-failure
