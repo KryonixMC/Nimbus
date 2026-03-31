@@ -270,5 +270,5 @@ The core design principle is **no frameworks** -- no Spring, no dependency injec
 
 - [SDK](/developer/sdk) -- Backend server plugin API
 - [Bridge Plugin](/developer/bridge) -- Velocity proxy plugin
-- [Signs Plugin](/developer/signs) -- Server sign management
+- [Display Plugin](/developer/display) -- Signs + NPC management
 - [WebSocket Reference](/reference/websocket) -- Event stream protocol
