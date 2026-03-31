@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide walks you through setting up your first Nimbus network from scratch. By the end, you'll have a running Velocity proxy, lobby server, and game server that players can connect to.
+Your Nimbus 2000 has arrived — time for takeoff. This guide walks you through setting up your first Nimbus network from scratch. By the end, you'll have a running Velocity proxy, lobby server, and game server that players can connect to.
 
 ## 1. Start Nimbus
 

@@ -74,7 +74,7 @@ features:
       width: 40
       height: 40
     title: "Lightweight & Fast"
-    details: "Single JAR, no bloat. Coroutine-powered async, interactive console, and runs on just Java 21."
+    details: "Faster than a Nimbus 2000. Single JAR, no bloat — coroutine-powered async, interactive console, and runs on just Java 21."
     link: /guide/installation
     linkText: Get started
 ---
