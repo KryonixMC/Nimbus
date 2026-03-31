@@ -159,7 +159,7 @@ fun nimbusMain() = runBlocking {
     }
 
     // Deploy and update all Nimbus plugins
-    PluginDeployer(baseDir).deployAll(templatesDir, staticDir, globalTemplateDir, globalProxyTemplateDir, config)
+    PluginDeployer(baseDir).deployAll(templatesDir, staticDir, globalTemplateDir, globalProxyTemplateDir, config, softwareResolver)
 
     // Initialize components
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -170,7 +170,11 @@ fun nimbusMain() = runBlocking {
     databaseManager.init()
 
     val registry = ServiceRegistry()
-    val portAllocator = PortAllocator(lbEnabled = config.loadbalancer.enabled)
+    val portAllocator = PortAllocator(
+        lbEnabled = config.loadbalancer.enabled,
+        bedrockEnabled = config.bedrock.enabled,
+        bedrockBasePort = config.bedrock.basePort
+    )
     val templateManager = TemplateManager()
     val groupManager = GroupManager()
     val permissionManager = PermissionManager(databaseManager)
@@ -242,6 +246,9 @@ fun nimbusMain() = runBlocking {
 
     val scalingJob = scalingEngine.start()
     logger.info("Scaling engine started (interval: {}ms)", config.controller.heartbeatInterval)
+    if (config.bedrock.enabled) {
+        logger.info("Bedrock support enabled (Geyser + Floodgate, base port {})", config.bedrock.basePort)
+    }
 
     // Create cluster WebSocket handler and dedicated server (if cluster enabled)
     val clusterWsHandler: ClusterWebSocketHandler? = if (nodeManager != null) {

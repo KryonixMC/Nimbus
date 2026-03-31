@@ -50,7 +50,9 @@ sealed class ClusterMessage {
         val apiUrl: String = "",
         val apiToken: String = "",
         val nimbusProperties: Map<String, String> = emptyMap(),
-        val javaVersion: Int = 0
+        val javaVersion: Int = 0,
+        val bedrockPort: Int = 0,
+        val bedrockEnabled: Boolean = false
     ) : ClusterMessage()
 
     @Serializable @SerialName("STOP_SERVICE")

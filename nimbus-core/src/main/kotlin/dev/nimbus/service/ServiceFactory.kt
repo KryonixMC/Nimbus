@@ -6,6 +6,7 @@ import dev.nimbus.event.EventBus
 import dev.nimbus.event.NimbusEvent
 import dev.nimbus.group.GroupManager
 import dev.nimbus.template.ConfigPatcher
+import dev.nimbus.template.GeyserConfigGen
 import dev.nimbus.template.PerformanceOptimizer
 import dev.nimbus.template.SoftwareResolver
 import dev.nimbus.template.TemplateManager
@@ -37,6 +38,7 @@ class ServiceFactory(
     private val logger = LoggerFactory.getLogger(ServiceFactory::class.java)
     private val configPatcher = ConfigPatcher()
     private val performanceOptimizer = PerformanceOptimizer()
+    private val geyserConfigGen = GeyserConfigGen()
     private val javaResolver = JavaResolver(config.java.toMap(), Path(config.paths.templates).toAbsolutePath().parent ?: Path("."))
 
     data class PreparedService(
@@ -183,7 +185,17 @@ class ServiceFactory(
 
             val forwardingMode = compatibilityChecker.determineForwardingMode()
             when (software) {
-                ServerSoftware.VELOCITY -> configPatcher.patchVelocityConfig(workDir, port, forwardingMode)
+                ServerSoftware.VELOCITY -> {
+                    configPatcher.patchVelocityConfig(workDir, port, forwardingMode)
+
+                    // Generate Geyser config for Bedrock support
+                    if (config.bedrock.enabled) {
+                        val bedrockPort = portAllocator.allocateBedrockPort()
+                        service.bedrockPort = bedrockPort
+                        geyserConfigGen.generateGeyserConfig(workDir, bedrockPort, port)
+                        logger.info("Bedrock enabled for '{}' on UDP port {}", serviceName, bedrockPort)
+                    }
+                }
                 else -> {
                     configPatcher.patchServerProperties(workDir, port)
 

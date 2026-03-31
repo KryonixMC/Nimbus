@@ -83,5 +83,10 @@ class StatusCommand(
         if (loadBalancer != null) {
             println("${ConsoleFormatter.hint("Load Balancer:")} ${loadBalancer.activeConnections} active / ${loadBalancer.totalConnections} total connections")
         }
+
+        // Bedrock info (if enabled)
+        if (config.bedrock.enabled) {
+            println("${ConsoleFormatter.hint("Bedrock:")} ${ConsoleFormatter.success("enabled")} (Geyser + Floodgate, base port ${config.bedrock.basePort})")
+        }
     }
 }

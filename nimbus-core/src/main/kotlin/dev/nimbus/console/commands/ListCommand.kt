@@ -38,7 +38,7 @@ class ListCommand(
                     svc.groupName,
                     ConsoleFormatter.coloredState(svc.state),
                     svc.host,
-                    svc.port.toString(),
+                    if (svc.bedrockPort != null) "${svc.port}/${svc.bedrockPort}" else svc.port.toString(),
                     svc.playerCount.toString(),
                     svc.nodeId,
                     (svc.pid?.toString() ?: "-"),
@@ -49,7 +49,7 @@ class ListCommand(
                     ConsoleFormatter.colorize(svc.name, ConsoleFormatter.BOLD),
                     svc.groupName,
                     ConsoleFormatter.coloredState(svc.state),
-                    svc.port.toString(),
+                    if (svc.bedrockPort != null) "${svc.port}/${svc.bedrockPort}" else svc.port.toString(),
                     svc.playerCount.toString(),
                     (svc.pid?.toString() ?: "-"),
                     ConsoleFormatter.formatUptime(svc.startedAt)

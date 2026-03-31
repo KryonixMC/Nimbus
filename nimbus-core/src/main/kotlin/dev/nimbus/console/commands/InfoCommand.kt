@@ -1,5 +1,7 @@
 package dev.nimbus.console.commands
 
+import dev.nimbus.config.NimbusConfig
+import dev.nimbus.config.ServerSoftware
 import dev.nimbus.console.Command
 import dev.nimbus.console.ConsoleFormatter
 import dev.nimbus.group.GroupManager
@@ -7,7 +9,8 @@ import dev.nimbus.service.ServiceRegistry
 
 class InfoCommand(
     private val groupManager: GroupManager,
-    private val registry: ServiceRegistry
+    private val registry: ServiceRegistry,
+    private val config: NimbusConfig? = null
 ) : Command {
 
     override val name = "info"
@@ -62,6 +65,16 @@ class InfoCommand(
             println(ConsoleFormatter.field("Custom Args", "", labelWidth = 22))
             for (arg in def.jvm.args) {
                 println("  ${ConsoleFormatter.colorize(arg, ConsoleFormatter.DIM)}")
+            }
+        }
+
+        // Bedrock info for proxy groups
+        if (def.software == ServerSoftware.VELOCITY && config?.bedrock?.enabled == true) {
+            println(ConsoleFormatter.section("Bedrock"))
+            println(ConsoleFormatter.field("Geyser + Floodgate", ConsoleFormatter.success("enabled"), labelWidth = 22))
+            val bedrockPorts = services.mapNotNull { it.bedrockPort }
+            if (bedrockPorts.isNotEmpty()) {
+                println(ConsoleFormatter.field("UDP Port(s)", bedrockPorts.joinToString(", "), labelWidth = 22))
             }
         }
 

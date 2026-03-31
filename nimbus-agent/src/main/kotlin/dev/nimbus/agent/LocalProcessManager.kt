@@ -50,6 +50,22 @@ class LocalProcessManager(
                 patchForwarding(workDir, msg.forwardingMode, msg.forwardingSecret, msg.software)
             }
 
+            // Generate Geyser config for Bedrock-enabled proxy services
+            if (msg.bedrockEnabled && msg.bedrockPort > 0 && msg.software == "VELOCITY") {
+                val geyserDir = workDir.resolve("plugins").resolve("Geyser-Velocity")
+                if (!geyserDir.exists()) java.nio.file.Files.createDirectories(geyserDir)
+                java.nio.file.Files.writeString(geyserDir.resolve("config.yml"), buildString {
+                    appendLine("bedrock:")
+                    appendLine("  address: 0.0.0.0")
+                    appendLine("  port: ${msg.bedrockPort}")
+                    appendLine("remote:")
+                    appendLine("  address: 127.0.0.1")
+                    appendLine("  port: ${msg.port}")
+                    appendLine("  auth-type: floodgate")
+                })
+                logger.info("Generated Geyser config: Bedrock UDP {} → Java TCP {}", msg.bedrockPort, msg.port)
+            }
+
             // Build command
             val command = buildCommand(msg)
 

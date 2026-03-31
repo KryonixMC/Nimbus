@@ -187,7 +187,9 @@ class ServiceManager(
             isModded = isModded,
             apiUrl = if (config.api.enabled) "http://${config.api.bind}:${config.api.port}" else "",
             apiToken = config.api.token,
-            javaVersion = javaResolver.requiredJavaVersion(groupConfig.version, groupConfig.software)
+            javaVersion = javaResolver.requiredJavaVersion(groupConfig.version, groupConfig.software),
+            bedrockPort = service.bedrockPort ?: 0,
+            bedrockEnabled = config.bedrock.enabled && groupConfig.software == dev.nimbus.config.ServerSoftware.VELOCITY
         )
     }
 
@@ -246,6 +248,7 @@ class ServiceManager(
         processHandles[service.name]?.destroy()
         processHandles.remove(service.name)
         portAllocator.release(service.port)
+        service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
         registry.unregister(service.name)
     }
 
@@ -298,6 +301,7 @@ class ServiceManager(
         handle.destroy()
         processHandles.remove(serviceName)
         portAllocator.release(service.port)
+        service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
         registry.unregister(serviceName)
         if (!service.isStatic) {
             cleanupWorkingDirectory(service.workingDirectory)
@@ -346,6 +350,7 @@ class ServiceManager(
             }
 
             portAllocator.release(service.port)
+        service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
             service.transitionTo(ServiceState.STOPPED)
             eventBus.emit(NimbusEvent.ServiceStopped(name))
 

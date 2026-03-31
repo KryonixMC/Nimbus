@@ -87,7 +87,7 @@ class NimbusConsole(
         dispatcher.register(StatusCommand(config, registry, groupManager, nodeManager, loadBalancer))
         dispatcher.register(ListCommand(registry, clusterEnabled = nodeManager != null))
         dispatcher.register(GroupsCommand(groupManager, registry))
-        dispatcher.register(InfoCommand(groupManager, registry))
+        dispatcher.register(InfoCommand(groupManager, registry, config))
         dispatcher.register(StartCommand(serviceManager, groupManager))
         dispatcher.register(StopCommand(serviceManager, registry))
         dispatcher.register(RestartCommand(serviceManager, registry))

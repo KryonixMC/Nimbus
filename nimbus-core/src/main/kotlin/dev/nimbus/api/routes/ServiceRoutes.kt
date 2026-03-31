@@ -263,6 +263,7 @@ private fun dev.nimbus.service.Service.toResponse(): ServiceResponse {
         startedAt = startedAt?.toString(),
         restartCount = restartCount,
         uptime = uptime,
-        isStatic = isStatic
+        isStatic = isStatic,
+        bedrockPort = bedrockPort
     )
 }

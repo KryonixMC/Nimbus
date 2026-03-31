@@ -1,9 +1,11 @@
 package dev.nimbus.template
 
 import dev.nimbus.config.NimbusConfig
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 
@@ -16,7 +18,8 @@ class PluginDeployer(private val baseDir: Path) {
         staticDir: Path,
         globalTemplateDir: Path,
         globalProxyTemplateDir: Path,
-        config: NimbusConfig
+        config: NimbusConfig,
+        softwareResolver: SoftwareResolver? = null
     ) {
         // Deploy Nimbus Bridge plugin to global_proxy (always overwrite for updates)
         deployHubPlugin(globalProxyTemplateDir)
@@ -35,6 +38,11 @@ class PluginDeployer(private val baseDir: Path) {
 
         // Deploy bridge config so the plugin can connect to the API
         deployBridgeConfig(globalProxyTemplateDir, config)
+
+        // Deploy Bedrock plugins (Geyser + Floodgate) if enabled
+        if (config.bedrock.enabled && softwareResolver != null) {
+            deployBedrockPlugins(templatesDir, globalTemplateDir, globalProxyTemplateDir, softwareResolver)
+        }
 
         // Extract optional plugins to plugins/ for easy installation on servers
         extractOptionalPlugins(baseDir.resolve("plugins"))
@@ -185,6 +193,56 @@ class PluginDeployer(private val baseDir: Path) {
 
         Files.writeString(bridgeConfig, json)
         logger.info("Deployed bridge config (API: {})", apiUrl)
+    }
+
+    /**
+     * Downloads and deploys Geyser + Floodgate for Bedrock Edition support.
+     * - Geyser (velocity) → global_proxy/plugins/ (proxy only)
+     * - Floodgate (velocity) → global_proxy/plugins/ (proxy)
+     * - Floodgate (paper) → global/plugins/ (all backends)
+     * - key.pem distributed from proxy template to global templates
+     */
+    private fun deployBedrockPlugins(
+        templatesDir: Path,
+        globalTemplateDir: Path,
+        globalProxyTemplateDir: Path,
+        softwareResolver: SoftwareResolver
+    ) {
+        runBlocking {
+            // Download Geyser to proxy template
+            softwareResolver.ensureGeyserPlugin(globalProxyTemplateDir)
+
+            // Download Floodgate to proxy and backend templates
+            softwareResolver.ensureFloodgatePlugin(globalProxyTemplateDir, "velocity")
+            softwareResolver.ensureFloodgatePlugin(globalTemplateDir, "spigot")
+        }
+
+        // Distribute Floodgate key.pem from proxy template to global templates
+        distributeFloodgateKey(templatesDir, globalTemplateDir, globalProxyTemplateDir)
+
+        logger.info("Bedrock support deployed (Geyser + Floodgate)")
+    }
+
+    /**
+     * Copies Floodgate's key.pem from the proxy template to global templates
+     * so all proxy and backend instances share the same authentication key.
+     */
+    private fun distributeFloodgateKey(templatesDir: Path, globalTemplateDir: Path, globalProxyTemplateDir: Path) {
+        // Floodgate generates key.pem on first proxy run in plugins/floodgate/
+        val proxyKeyFile = templatesDir.resolve("proxy").resolve("plugins").resolve("floodgate").resolve("key.pem")
+        if (!proxyKeyFile.exists()) {
+            logger.debug("Floodgate key.pem not found yet — will be generated on first proxy start")
+            return
+        }
+
+        // Copy to global (backends) and global_proxy (proxies)
+        for (globalDir in listOf(globalTemplateDir, globalProxyTemplateDir)) {
+            val targetDir = globalDir.resolve("plugins").resolve("floodgate")
+            if (!targetDir.exists()) targetDir.createDirectories()
+            val targetFile = targetDir.resolve("key.pem")
+            Files.copy(proxyKeyFile, targetFile, StandardCopyOption.REPLACE_EXISTING)
+        }
+        logger.info("Distributed Floodgate key.pem to global templates")
     }
 
     /**

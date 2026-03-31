@@ -18,7 +18,8 @@ class Service(
     var startedAt: Instant? = null,
     var restartCount: Int = 0,
     var workingDirectory: Path,
-    var isStatic: Boolean = false
+    var isStatic: Boolean = false,
+    var bedrockPort: Int? = null
 ) {
     private val logger = org.slf4j.LoggerFactory.getLogger(Service::class.java)
 

@@ -65,6 +65,19 @@ private data class ModrinthVersionsResponse(val id: String = "", val version_num
 @Serializable
 private data class ModrinthFile(val url: String, val filename: String, val primary: Boolean = false)
 
+// GeyserMC API models (for Geyser + Floodgate)
+@Serializable
+private data class GeyserProjectResponse(val versions: List<String> = emptyList())
+
+@Serializable
+private data class GeyserBuildsResponse(val builds: List<GeyserBuild> = emptyList())
+
+@Serializable
+private data class GeyserBuild(val build: Int, val downloads: Map<String, GeyserDownload> = emptyMap())
+
+@Serializable
+private data class GeyserDownload(val name: String, val sha256: String = "")
+
 // Hangar API models (for Via plugins)
 @Serializable
 private data class HangarVersionsResponse(val result: List<HangarVersion>)
@@ -394,10 +407,101 @@ class SoftwareResolver {
         }
     }
 
+    // ── Bedrock plugin downloads (Geyser + Floodgate) ───────────
+
+    /**
+     * Downloads Geyser (Velocity plugin) to the template's plugins/ directory.
+     * Uses the GeyserMC download API (Modrinth only has Fabric/NeoForge builds).
+     */
+    suspend fun ensureGeyserPlugin(templateDir: Path): Boolean {
+        val pluginsDir = templateDir.resolve("plugins")
+        if (!pluginsDir.exists()) pluginsDir.createDirectories()
+        val hasGeyser = pluginsDir.toFile().listFiles()?.any {
+            it.name.lowercase().contains("geyser") && it.name.endsWith(".jar")
+        } ?: false
+        if (hasGeyser) return true
+        return downloadGeyserMCPlugin("geyser", "velocity", pluginsDir, "Geyser")
+    }
+
+    /**
+     * Downloads Floodgate to the template's plugins/ directory.
+     * Uses the GeyserMC download API.
+     * @param platform "velocity" for proxy, "spigot" for backend servers (Paper/Purpur/Folia)
+     */
+    suspend fun ensureFloodgatePlugin(templateDir: Path, platform: String): Boolean {
+        val pluginsDir = templateDir.resolve("plugins")
+        if (!pluginsDir.exists()) pluginsDir.createDirectories()
+        val hasFloodgate = pluginsDir.toFile().listFiles()?.any {
+            it.name.lowercase().contains("floodgate") && it.name.endsWith(".jar")
+        } ?: false
+        if (hasFloodgate) return true
+        return downloadGeyserMCPlugin("floodgate", platform, pluginsDir, "Floodgate")
+    }
+
+    /**
+     * Downloads a plugin from the GeyserMC download API.
+     * API: https://download.geysermc.org/v2/projects/{project}/versions/{version}/builds/{build}/downloads/{platform}
+     */
+    private suspend fun downloadGeyserMCPlugin(project: String, platform: String, pluginsDir: Path, displayName: String): Boolean {
+        return try {
+            // Get latest version
+            val projectUrl = "https://download.geysermc.org/v2/projects/$project"
+            val projectResponse = client.get(projectUrl)
+            if (projectResponse.status != HttpStatusCode.OK) {
+                logger.error("Failed to fetch {} versions: HTTP {}", displayName, projectResponse.status)
+                return false
+            }
+            val projectData = json.decodeFromString<GeyserProjectResponse>(projectResponse.bodyAsText())
+            val latestVersion = projectData.versions.lastOrNull() ?: run {
+                logger.error("No versions found for {}", displayName)
+                return false
+            }
+
+            // Get latest build for that version
+            val buildsUrl = "$projectUrl/versions/$latestVersion/builds"
+            val buildsResponse = client.get(buildsUrl)
+            if (buildsResponse.status != HttpStatusCode.OK) {
+                logger.error("Failed to fetch {} builds: HTTP {}", displayName, buildsResponse.status)
+                return false
+            }
+            val buildsData = json.decodeFromString<GeyserBuildsResponse>(buildsResponse.bodyAsText())
+            val latestBuild = buildsData.builds.lastOrNull() ?: run {
+                logger.error("No builds found for {} {}", displayName, latestVersion)
+                return false
+            }
+
+            val download = latestBuild.downloads[platform] ?: run {
+                logger.error("No {} download for {} (available: {})", platform, displayName, latestBuild.downloads.keys)
+                return false
+            }
+
+            // Download the JAR
+            val downloadUrl = "$projectUrl/versions/$latestVersion/builds/${latestBuild.build}/downloads/$platform"
+            val jarResponse = client.get(downloadUrl)
+            if (jarResponse.status != HttpStatusCode.OK) {
+                logger.error("Failed to download {} {}: HTTP {}", displayName, platform, jarResponse.status)
+                return false
+            }
+
+            val targetFile = pluginsDir.resolve(download.name)
+            Files.write(targetFile, jarResponse.readRawBytes())
+            val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
+            logger.info("Downloaded {} {} v{} build {} ({} MB)", displayName, platform, latestVersion, latestBuild.build, sizeMb)
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to download {} {}: {}", displayName, platform, e.message)
+            false
+        }
+    }
+
     /**
      * Downloads a mod from Modrinth by project slug, filtered by game version.
      */
     private suspend fun downloadModrinthMod(projectSlug: String, loader: String, modsDir: Path, displayName: String, mcVersion: String = ""): Boolean {
+        return downloadFromModrinth(projectSlug, loader, modsDir, displayName, mcVersion)
+    }
+
+    private suspend fun downloadFromModrinth(projectSlug: String, loader: String, targetDir: Path, displayName: String, mcVersion: String): Boolean {
         return try {
             val versionFilter = if (mcVersion.isNotEmpty()) "&game_versions=%5B%22$mcVersion%22%5D" else ""
             val searchUrl = "https://api.modrinth.com/v2/project/$projectSlug/version?loaders=%5B%22$loader%22%5D$versionFilter"
@@ -410,7 +514,7 @@ class SoftwareResolver {
                 if (file != null) {
                     val jarResponse = client.get(file.url)
                     if (jarResponse.status == HttpStatusCode.OK) {
-                        val targetFile = modsDir.resolve(file.filename)
+                        val targetFile = targetDir.resolve(file.filename)
                         Files.write(targetFile, jarResponse.readRawBytes())
                         val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
                         logger.info("Auto-installed {} ({}, {} MB)", displayName, file.filename, sizeMb)

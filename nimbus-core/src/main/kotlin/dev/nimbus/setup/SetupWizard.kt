@@ -99,6 +99,13 @@ class SetupWizard(
             done(w, "Velocity $velocityVersion ${ConsoleFormatter.hint("(always latest — backwards compatible)")}")
             w.println()
 
+            // --- Step 2.5: Bedrock Support ---
+            val bedrockEnabled = promptYesNo(terminal, "  Enable Bedrock Edition? (Geyser + Floodgate)", false)
+            if (bedrockEnabled) {
+                done(w, "Bedrock support enabled ${ConsoleFormatter.hint("(Geyser + Floodgate will be auto-installed)")}")
+            }
+            w.println()
+
             // --- Step 3: Server Groups ---
             stepHeader(w, 3, "Server Groups")
             w.println()
@@ -223,13 +230,30 @@ class SetupWizard(
                     }
                 }
             }
+
+            // Bedrock plugins (Geyser + Floodgate)
+            if (bedrockEnabled) {
+                w.println()
+                w.println("  ${ConsoleFormatter.colorize("Bedrock:", ConsoleFormatter.BOLD)}")
+                val proxyTemplate = baseDir.resolve("templates/proxy")
+                val globalTemplate = baseDir.resolve("templates/global")
+                download(w, "Geyser ${ConsoleFormatter.hint("(Velocity plugin)")}") {
+                    softwareResolver.ensureGeyserPlugin(proxyTemplate)
+                }
+                download(w, "Floodgate ${ConsoleFormatter.hint("(Velocity plugin)")}") {
+                    softwareResolver.ensureFloodgatePlugin(proxyTemplate, "velocity")
+                }
+                download(w, "Floodgate ${ConsoleFormatter.hint("(backend plugin)")}") {
+                    softwareResolver.ensureFloodgatePlugin(globalTemplate, "spigot")
+                }
+            }
             w.println()
 
             // --- Step 5: Write configs ---
             stepHeader(w, 5, "Saving configuration")
             w.println()
 
-            writeNimbusToml(networkName)
+            writeNimbusToml(networkName, bedrockEnabled)
             w.println("  ${ConsoleFormatter.colorize("+", ConsoleFormatter.GREEN)} config/nimbus.toml")
 
             writeProxyToml(velocityVersion)
@@ -425,8 +449,15 @@ class SetupWizard(
 
     // ── Config writers ──────────────────────────────────────────
 
-    private fun writeNimbusToml(networkName: String) {
+    private fun writeNimbusToml(networkName: String, bedrockEnabled: Boolean = false) {
         val token = generateToken()
+        val bedrockSection = if (bedrockEnabled) """
+            |
+            |[bedrock]
+            |enabled = true
+            |base_port = 19132
+        """.trimMargin() else ""
+
         val content = """
             |# Nimbus — Main Configuration
             |
@@ -464,6 +495,7 @@ class SetupWizard(
             |# name = "nimbus"
             |# username = ""
             |# password = ""
+            |$bedrockSection
         """.trimMargin() + "\n"
         val configDir = baseDir.resolve("config")
         Files.createDirectories(configDir)

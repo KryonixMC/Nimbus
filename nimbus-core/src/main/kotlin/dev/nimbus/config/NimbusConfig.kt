@@ -13,6 +13,7 @@ data class NimbusConfig(
     val java: JavaConfig = JavaConfig(),
     val database: DatabaseConfig = DatabaseConfig(),
     val loadbalancer: LoadBalancerConfig = LoadBalancerConfig(),
+    val bedrock: BedrockConfig = BedrockConfig(),
     val cluster: ClusterConfig = ClusterConfig()
 )
 
@@ -102,6 +103,13 @@ data class LoadBalancerConfig(
     val connectionTimeout: Int = 5000,
     @SerialName("buffer_size")
     val bufferSize: Int = 16384
+)
+
+@Serializable
+data class BedrockConfig(
+    val enabled: Boolean = false,
+    @SerialName("base_port")
+    val basePort: Int = 19132
 )
 
 @Serializable
