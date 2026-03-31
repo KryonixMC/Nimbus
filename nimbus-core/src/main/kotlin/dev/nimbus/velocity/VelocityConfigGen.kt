@@ -35,7 +35,9 @@ class VelocityConfigGen(
             .sortedBy { it.name }
 
         val serverEntries = backendServices.joinToString("\n") { service ->
-            """${service.name} = "${service.host}:${service.port}""""
+            val safeName = service.name.replace("\"", "").replace("[", "").replace("]", "")
+            val safeHost = service.host.replace("\"", "")
+            """$safeName = "$safeHost:${service.port}""""
         }
 
         // Try list — lobby servers preferred
@@ -44,7 +46,7 @@ class VelocityConfigGen(
             val firstGroup = backendServices.firstOrNull()?.groupName
             if (firstGroup != null) backendServices.filter { it.groupName == firstGroup } else emptyList()
         }
-        val tryList = tryServices.joinToString(", ") { "\"${it.name}\"" }
+        val tryList = tryServices.joinToString(", ") { "\"${it.name.replace("\"", "")}\"" }
 
         // Build the new [servers] block
         val newServersBlock = buildString {

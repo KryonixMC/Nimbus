@@ -10,6 +10,8 @@ import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -343,7 +345,7 @@ public class CloudCommand implements SimpleCommand {
         }
         String group = args[1];
         source.sendMessage(Component.text("Starting instance of " + group + "...", NamedTextColor.GRAY));
-        api.post("/api/services/" + group + "/start").thenAccept(result -> {
+        api.post("/api/services/" + enc(group) + "/start").thenAccept(result -> {
             if (result.isSuccess()) {
                 String msg = result.asJson().get("message").getAsString();
                 source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
@@ -361,7 +363,7 @@ public class CloudCommand implements SimpleCommand {
         }
         String service = args[1];
         source.sendMessage(Component.text("Stopping " + service + "...", NamedTextColor.GRAY));
-        api.post("/api/services/" + service + "/stop").thenAccept(result -> {
+        api.post("/api/services/" + enc(service) + "/stop").thenAccept(result -> {
             if (result.isSuccess()) {
                 source.sendMessage(Component.text("Service '" + service + "' stopped.", NamedTextColor.GREEN));
             } else {
@@ -378,7 +380,7 @@ public class CloudCommand implements SimpleCommand {
         }
         String service = args[1];
         source.sendMessage(Component.text("Restarting " + service + "...", NamedTextColor.GRAY));
-        api.post("/api/services/" + service + "/restart").thenAccept(result -> {
+        api.post("/api/services/" + enc(service) + "/restart").thenAccept(result -> {
             if (result.isSuccess()) {
                 String msg = result.asJson().get("message").getAsString();
                 source.sendMessage(Component.text(msg, NamedTextColor.GREEN));
@@ -400,7 +402,7 @@ public class CloudCommand implements SimpleCommand {
         JsonObject body = new JsonObject();
         body.addProperty("command", command);
 
-        api.post("/api/services/" + service + "/exec", body).thenAccept(result -> {
+        api.post("/api/services/" + enc(service) + "/exec", body).thenAccept(result -> {
             if (result.isSuccess()) {
                 source.sendMessage(
                         Component.text("Executed on " + service + ": ", NamedTextColor.GREEN)
@@ -455,7 +457,7 @@ public class CloudCommand implements SimpleCommand {
         JsonObject body = new JsonObject();
         body.addProperty("targetService", target);
 
-        api.post("/api/players/" + player + "/send", body).thenAccept(result -> {
+        api.post("/api/players/" + enc(player) + "/send", body).thenAccept(result -> {
             if (result.isSuccess()) {
                 source.sendMessage(
                         Component.text("Sent " + player + " to " + target, NamedTextColor.GREEN)
@@ -499,7 +501,7 @@ public class CloudCommand implements SimpleCommand {
             return;
         }
         String group = args[1];
-        api.get("/api/groups/" + group).thenAccept(result -> {
+        api.get("/api/groups/" + enc(group)).thenAccept(result -> {
             if (!result.isSuccess()) {
                 source.sendMessage(apiError(result));
                 return;
@@ -791,7 +793,7 @@ public class CloudCommand implements SimpleCommand {
             case "info" -> {
                 if (args.length < 4) { source.sendMessage(Component.text("Usage: /cloud perms group info <name>", NamedTextColor.RED)); return; }
                 String name = args[3];
-                api.get("/api/permissions/groups/" + name).thenAccept(result -> {
+                api.get("/api/permissions/groups/" + enc(name)).thenAccept(result -> {
                     if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
                     JsonObject g = result.asJson();
 
@@ -837,7 +839,7 @@ public class CloudCommand implements SimpleCommand {
             }
             case "delete" -> {
                 if (args.length < 4) { source.sendMessage(Component.text("Usage: /cloud perms group delete <name>", NamedTextColor.RED)); return; }
-                api.delete("/api/permissions/groups/" + args[3]).thenAccept(result -> {
+                api.delete("/api/permissions/groups/" + enc(args[3])).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Permission group '" + args[3] + "' deleted.", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -846,7 +848,7 @@ public class CloudCommand implements SimpleCommand {
                 if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group addperm <group> <permission>", NamedTextColor.RED)); return; }
                 JsonObject body = new JsonObject();
                 body.addProperty("permission", args[4]);
-                api.post("/api/permissions/groups/" + args[3] + "/permissions", body).thenAccept(result -> {
+                api.post("/api/permissions/groups/" + enc(args[3]) + "/permissions", body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Added '" + args[4] + "' to '" + args[3] + "'.", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -855,7 +857,7 @@ public class CloudCommand implements SimpleCommand {
                 if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group removeperm <group> <permission>", NamedTextColor.RED)); return; }
                 JsonObject body = new JsonObject();
                 body.addProperty("permission", args[4]);
-                api.delete("/api/permissions/groups/" + args[3] + "/permissions", body).thenAccept(result -> {
+                api.delete("/api/permissions/groups/" + enc(args[3]) + "/permissions", body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Removed '" + args[4] + "' from '" + args[3] + "'.", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -865,7 +867,7 @@ public class CloudCommand implements SimpleCommand {
                 boolean value = args.length < 5 || Boolean.parseBoolean(args[4]);
                 JsonObject body = new JsonObject();
                 body.addProperty("default", value);
-                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Group '" + args[3] + "' default set to " + value + ".", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -873,7 +875,7 @@ public class CloudCommand implements SimpleCommand {
             case "addparent" -> {
                 if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group addparent <group> <parent>", NamedTextColor.RED)); return; }
                 // Fetch current group, add parent, update
-                api.get("/api/permissions/groups/" + args[3]).thenAccept(result -> {
+                api.get("/api/permissions/groups/" + enc(args[3])).thenAccept(result -> {
                     if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
                     JsonObject current = result.asJson();
                     JsonArray parents = current.getAsJsonArray("parents");
@@ -886,7 +888,7 @@ public class CloudCommand implements SimpleCommand {
                     parentList.forEach(newParents::add);
                     body.add("parents", newParents);
 
-                    api.put("/api/permissions/groups/" + args[3], body).thenAccept(r2 -> {
+                    api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(r2 -> {
                         if (r2.isSuccess()) source.sendMessage(Component.text("Added parent '" + args[4] + "' to '" + args[3] + "'.", NamedTextColor.GREEN));
                         else source.sendMessage(apiError(r2));
                     });
@@ -894,7 +896,7 @@ public class CloudCommand implements SimpleCommand {
             }
             case "removeparent" -> {
                 if (args.length < 5) { source.sendMessage(Component.text("Usage: /cloud perms group removeparent <group> <parent>", NamedTextColor.RED)); return; }
-                api.get("/api/permissions/groups/" + args[3]).thenAccept(result -> {
+                api.get("/api/permissions/groups/" + enc(args[3])).thenAccept(result -> {
                     if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
                     JsonObject current = result.asJson();
                     JsonArray parents = current.getAsJsonArray("parents");
@@ -907,7 +909,7 @@ public class CloudCommand implements SimpleCommand {
                     parentList.forEach(newParents::add);
                     body.add("parents", newParents);
 
-                    api.put("/api/permissions/groups/" + args[3], body).thenAccept(r2 -> {
+                    api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(r2 -> {
                         if (r2.isSuccess()) source.sendMessage(Component.text("Removed parent '" + args[4] + "' from '" + args[3] + "'.", NamedTextColor.GREEN));
                         else source.sendMessage(apiError(r2));
                     });
@@ -918,7 +920,7 @@ public class CloudCommand implements SimpleCommand {
                 String prefix = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
                 JsonObject body = new JsonObject();
                 body.addProperty("prefix", prefix);
-                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Prefix for '" + args[3] + "' set to: " + prefix, NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -928,7 +930,7 @@ public class CloudCommand implements SimpleCommand {
                 String suffix = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
                 JsonObject body = new JsonObject();
                 body.addProperty("suffix", suffix);
-                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Suffix for '" + args[3] + "' set to: " + suffix, NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -940,7 +942,7 @@ public class CloudCommand implements SimpleCommand {
                 catch (NumberFormatException e) { source.sendMessage(Component.text("Priority must be a number.", NamedTextColor.RED)); return; }
                 JsonObject body = new JsonObject();
                 body.addProperty("priority", priority);
-                api.put("/api/permissions/groups/" + args[3], body).thenAccept(result -> {
+                api.put("/api/permissions/groups/" + enc(args[3]), body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Priority for '" + args[3] + "' set to " + priority + ".", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -968,7 +970,7 @@ public class CloudCommand implements SimpleCommand {
 
                 // If it's a player name, try to resolve UUID from online players
                 String uuid = resolveUuid(identifier);
-                api.get("/api/permissions/players/" + uuid).thenAccept(result -> {
+                api.get("/api/permissions/players/" + enc(uuid)).thenAccept(result -> {
                     if (!result.isSuccess()) { source.sendMessage(apiError(result)); return; }
                     JsonObject json = result.asJson();
 
@@ -1010,7 +1012,7 @@ public class CloudCommand implements SimpleCommand {
                 body.addProperty("group", group);
                 body.addProperty("name", playerName);
 
-                api.post("/api/permissions/players/" + uuid + "/groups", body).thenAccept(result -> {
+                api.post("/api/permissions/players/" + enc(uuid) + "/groups", body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Added group '" + group + "' to " + playerName + ".", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -1024,7 +1026,7 @@ public class CloudCommand implements SimpleCommand {
                 JsonObject body = new JsonObject();
                 body.addProperty("group", group);
 
-                api.delete("/api/permissions/players/" + uuid + "/groups", body).thenAccept(result -> {
+                api.delete("/api/permissions/players/" + enc(uuid) + "/groups", body).thenAccept(result -> {
                     if (result.isSuccess()) source.sendMessage(Component.text("Removed group '" + group + "' from player.", NamedTextColor.GREEN));
                     else source.sendMessage(apiError(result));
                 });
@@ -1258,7 +1260,7 @@ public class CloudCommand implements SimpleCommand {
 
         source.sendMessage(Component.text(
                 (enabled ? "Enabling" : "Disabling") + " maintenance for " + groupName + "...", NamedTextColor.GRAY));
-        api.post("/api/maintenance/groups/" + groupName, body).thenAccept(result -> {
+        api.post("/api/maintenance/groups/" + enc(groupName), body).thenAccept(result -> {
             if (result.isSuccess()) {
                 source.sendMessage(Component.text(
                         groupName + " maintenance " + (enabled ? "enabled." : "disabled."),
@@ -1558,6 +1560,11 @@ public class CloudCommand implements SimpleCommand {
             }
         } catch (Exception ignored) {}
         return Component.text("API error (HTTP " + result.statusCode() + ")", NamedTextColor.RED);
+    }
+
+    /** URL-encodes a path segment to prevent path traversal and injection. */
+    private static String enc(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private static String formatUptime(long seconds) {

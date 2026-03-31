@@ -44,7 +44,11 @@ public class NimbusSelfService {
         String group = System.getProperty("nimbus.service.group");
         String portStr = System.getProperty("nimbus.service.port", "0");
         String apiUrl = System.getProperty("nimbus.api.url", "http://127.0.0.1:8080");
-        String token = System.getProperty("nimbus.api.token", "");
+        // Token: prefer env var (hidden from ps), fall back to system property for backwards compat
+        String envToken = System.getenv("NIMBUS_API_TOKEN");
+        String token = (envToken != null && !envToken.isEmpty())
+                ? envToken
+                : System.getProperty("nimbus.api.token", "");
 
         if (name == null) {
             throw new IllegalStateException(

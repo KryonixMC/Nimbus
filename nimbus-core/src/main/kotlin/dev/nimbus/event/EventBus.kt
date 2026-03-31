@@ -11,10 +11,11 @@ import org.slf4j.LoggerFactory
 
 class EventBus(@PublishedApi internal val scope: CoroutineScope) {
 
-    private val logger = LoggerFactory.getLogger(EventBus::class.java)
+    @PublishedApi
+    internal val logger = LoggerFactory.getLogger(EventBus::class.java)
 
     @PublishedApi
-    internal val _events = MutableSharedFlow<NimbusEvent>(extraBufferCapacity = 64)
+    internal val _events = MutableSharedFlow<NimbusEvent>(extraBufferCapacity = 512)
 
     suspend fun emit(event: NimbusEvent) {
         logger.debug("Event emitted: {}", event)
@@ -26,7 +27,11 @@ class EventBus(@PublishedApi internal val scope: CoroutineScope) {
     inline fun <reified T : NimbusEvent> on(noinline handler: suspend (T) -> Unit): Job {
         return scope.launch {
             _events.filterIsInstance<T>().collect { event ->
-                handler(event)
+                try {
+                    handler(event)
+                } catch (e: Exception) {
+                    logger.error("Event handler failed for {}: {}", event::class.simpleName, e.message, e)
+                }
             }
         }
     }

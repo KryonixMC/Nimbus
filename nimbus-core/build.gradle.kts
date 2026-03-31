@@ -51,6 +51,7 @@ dependencies {
     implementation("io.ktor:ktor-server-websockets:3.1.1")
     implementation("io.ktor:ktor-server-cors:3.1.1")
     implementation("io.ktor:ktor-server-status-pages:3.1.1")
+    implementation("io.ktor:ktor-server-rate-limit:3.1.1")
 
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")

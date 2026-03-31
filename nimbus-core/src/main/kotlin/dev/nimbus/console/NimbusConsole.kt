@@ -91,6 +91,7 @@ class NimbusConsole(
         dispatcher.register(StartCommand(serviceManager, groupManager))
         dispatcher.register(StopCommand(serviceManager, registry))
         dispatcher.register(RestartCommand(serviceManager, registry))
+        dispatcher.register(PurgeCommand(serviceManager, registry))
         dispatcher.register(ScreenCommand(serviceManager, registry, terminal))
         dispatcher.register(ExecCommand(serviceManager, registry))
         dispatcher.register(PlayersCommand(registry))

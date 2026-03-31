@@ -64,8 +64,8 @@ class BackendHealthManager(
                 backend.consecutiveFailures.set(0)
                 val successes = backend.consecutiveSuccesses.incrementAndGet()
                 val oldStatus = backend.status.get()
-                if (oldStatus == HealthStatus.UNHEALTHY && successes >= config.healthyThreshold) {
-                    backend.status.set(HealthStatus.HEALTHY)
+                if (oldStatus == HealthStatus.UNHEALTHY && successes >= config.healthyThreshold
+                    && backend.status.compareAndSet(HealthStatus.UNHEALTHY, HealthStatus.HEALTHY)) {
                     logger.info("Backend {}:{} is now HEALTHY", backend.host, backend.port)
                     scope.launch {
                         eventBus.emit(NimbusEvent.LoadBalancerBackendHealthChanged(
@@ -77,8 +77,8 @@ class BackendHealthManager(
                 backend.consecutiveSuccesses.set(0)
                 val failures = backend.consecutiveFailures.incrementAndGet()
                 val oldStatus = backend.status.get()
-                if (oldStatus == HealthStatus.HEALTHY && failures >= config.unhealthyThreshold) {
-                    backend.status.set(HealthStatus.UNHEALTHY)
+                if (oldStatus == HealthStatus.HEALTHY && failures >= config.unhealthyThreshold
+                    && backend.status.compareAndSet(HealthStatus.HEALTHY, HealthStatus.UNHEALTHY)) {
                     logger.warn("Backend {}:{} is now UNHEALTHY after {} consecutive failures",
                         backend.host, backend.port, failures)
                     scope.launch {
@@ -114,13 +114,12 @@ class BackendHealthManager(
         val state = backends["$host:$port"] ?: return
         state.consecutiveSuccesses.set(0)
         val failures = state.consecutiveFailures.incrementAndGet()
-        val oldStatus = state.status.get()
-        if (oldStatus == HealthStatus.HEALTHY && failures >= config.unhealthyThreshold) {
-            state.status.set(HealthStatus.UNHEALTHY)
+        if (failures >= config.unhealthyThreshold &&
+            state.status.compareAndSet(HealthStatus.HEALTHY, HealthStatus.UNHEALTHY)) {
             logger.warn("Backend {}:{} marked UNHEALTHY via passive failure detection", host, port)
             scope.launch {
                 eventBus.emit(NimbusEvent.LoadBalancerBackendHealthChanged(
-                    host, port, oldStatus.name, HealthStatus.UNHEALTHY.name
+                    host, port, HealthStatus.HEALTHY.name, HealthStatus.UNHEALTHY.name
                 ))
             }
         }

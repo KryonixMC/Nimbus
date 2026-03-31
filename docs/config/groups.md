@@ -42,9 +42,9 @@ Core group identity and server software settings.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `name` | String | *required* | Group name in PascalCase. Services are named `<Name>-<N>` (e.g., `BedWars-1`). |
+| `name` | String | *required* | Group name in PascalCase. Only `a-z`, `A-Z`, `0-9`, `-`, `_` allowed. Services are named `<Name>-<N>` (e.g., `BedWars-1`). |
 | `type` | Enum | `"DYNAMIC"` | `STATIC` or `DYNAMIC`. See [Static vs Dynamic](#static-vs-dynamic) below. |
-| `template` | String | *required* | Template directory name inside `templates/`. Must not be blank. |
+| `template` | String | *required* | Template directory name inside `templates/`. Only `a-z`, `A-Z`, `0-9`, `-`, `_`, `.` allowed. |
 | `software` | Enum | `"PAPER"` | Server software. One of: `PAPER`, `PUFFERFISH`, `PURPUR`, `FOLIA`, `VELOCITY`, `FORGE`, `FABRIC`, `NEOFORGE`, `CUSTOM`. |
 | `version` | String | `"1.21.4"` | Minecraft version (e.g., `"1.21.4"`, `"1.8.8"`). Must match format `X.Y` or `X.Y.Z`. |
 | `modloader_version` | String | `""` | Modloader version for `FORGE`, `FABRIC`, or `NEOFORGE`. If empty, Nimbus uses the latest stable version. |

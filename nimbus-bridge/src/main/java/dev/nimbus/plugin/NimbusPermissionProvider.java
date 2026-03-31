@@ -16,7 +16,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Velocity PermissionProvider that loads permissions from the Nimbus Core API.
@@ -27,6 +29,7 @@ public class NimbusPermissionProvider implements PermissionProvider {
     private final NimbusApiClient apiClient;
     private final Logger logger;
     private final Map<UUID, Set<String>> cache = new ConcurrentHashMap<>();
+    private final Map<UUID, CompletableFuture<Void>> pendingLoads = new ConcurrentHashMap<>();
     private final Gson gson = new Gson();
 
     public NimbusPermissionProvider(NimbusApiClient apiClient, Logger logger) {
@@ -40,15 +43,48 @@ public class NimbusPermissionProvider implements PermissionProvider {
             return PermissionFunction.ALWAYS_UNDEFINED;
         }
 
-        // Load permissions async on first access, return UNDEFINED until loaded
         UUID uuid = player.getUniqueId();
-        loadPermissions(uuid);
+
+        // Wait for initial permission load to complete (up to 5s) so the first
+        // permission checks don't all return UNDEFINED during the async window.
+        CompletableFuture<Void> loadFuture = loadPermissionsTracked(uuid);
+        try {
+            loadFuture.get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            logger.warn("Timed out waiting for initial permission load for {} — will resolve async", player.getUsername());
+        }
 
         return permission -> {
             Set<String> perms = cache.get(uuid);
             if (perms == null) return Tristate.UNDEFINED;
             return matchesPermission(perms, permission) ? Tristate.TRUE : Tristate.FALSE;
         };
+    }
+
+    /**
+     * Loads permissions and returns a future that completes when done.
+     */
+    private CompletableFuture<Void> loadPermissionsTracked(UUID uuid) {
+        return pendingLoads.computeIfAbsent(uuid, u -> {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            apiClient.get("/api/permissions/players/" + uuid)
+                .thenAccept(result -> {
+                    if (result.isSuccess()) {
+                        cacheFromResponse(uuid, uuid.toString(), result);
+                    } else {
+                        logger.warn("Failed to load permissions for {}: HTTP {}", uuid, result.statusCode());
+                    }
+                    future.complete(null);
+                    pendingLoads.remove(uuid);
+                })
+                .exceptionally(e -> {
+                    logger.warn("Failed to load permissions for {}: {}", uuid, e.getMessage());
+                    future.complete(null);
+                    pendingLoads.remove(uuid);
+                    return null;
+                });
+            return future;
+        });
     }
 
     /**

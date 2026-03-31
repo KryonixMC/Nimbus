@@ -67,6 +67,11 @@ object ConfigLoader {
         require(group.name.isNotBlank()) {
             throw ConfigException("Group name must not be blank in $source")
         }
+        if (!group.name.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+            throw ConfigException(
+                "Group name '${group.name}' contains invalid characters in $source — only alphanumeric, hyphen and underscore allowed"
+            )
+        }
 
         if (scaling.minInstances > scaling.maxInstances) {
             throw ConfigException(
@@ -111,6 +116,11 @@ object ConfigLoader {
         if (group.template.isBlank()) {
             throw ConfigException(
                 "Template name must not be blank in group '${group.name}' ($source)"
+            )
+        }
+        if (!group.template.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+            throw ConfigException(
+                "Template name '${group.template}' contains invalid characters in group '${group.name}' ($source) — only alphanumeric, hyphen, underscore and dot allowed"
             )
         }
     }

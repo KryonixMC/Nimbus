@@ -183,6 +183,7 @@ fun nimbusMain() = runBlocking {
     // Start metrics collector
     val metricsCollector = MetricsCollector(databaseManager, eventBus)
     val metricsJobs = metricsCollector.start()
+    metricsCollector.startRetentionCleanup(scope)
 
     val displayManager = dev.nimbus.display.DisplayManager(displaysDir)
     displayManager.init()

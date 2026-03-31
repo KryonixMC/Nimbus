@@ -97,9 +97,16 @@ fun Route.eventRoutes(
 private suspend fun DefaultWebSocketServerSession.authenticateWebSocket(expectedToken: String): Boolean {
     if (expectedToken.isBlank()) return true
 
-    val clientToken = call.request.queryParameters["token"]
+    // Prefer Authorization header (hidden from logs), fall back to query param for backwards compat
+    val authHeader = call.request.headers["Authorization"]
+    val clientToken = when {
+        authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true) ->
+            authHeader.removePrefix("Bearer ").removePrefix("bearer ")
+        else -> call.request.queryParameters["token"]
+    }
+
     if (clientToken == null || !NimbusApi.timingSafeEquals(clientToken, expectedToken)) {
-        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Authentication required — provide ?token= query parameter"))
+        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Authentication required — provide Authorization header or ?token= query parameter"))
         return false
     }
     return true

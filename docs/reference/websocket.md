@@ -4,17 +4,23 @@ Nimbus provides two WebSocket endpoints for real-time communication: a global ev
 
 ## Authentication
 
-WebSocket clients cannot set HTTP headers during the handshake, so authentication uses a `token` query parameter instead of the `Authorization` header:
+WebSocket connections support two authentication methods:
 
+**1. Authorization header (recommended):**
+```
+Authorization: Bearer your-secret-token
+```
+
+**2. Query parameter (legacy, for clients that cannot set headers):**
 ```
 ws://host:port/api/events?token=your-secret-token
 ws://host:port/api/services/Lobby-1/console?token=your-secret-token
 ```
 
-If no token is configured on the server, the `?token=` parameter can be omitted.
+The `Authorization` header is preferred because query parameters may appear in server access logs and proxy logs. Both methods are accepted.
 
 ::: warning
-If authentication fails, the connection is immediately closed with code `1008` (Policy Violation) and the message: `Authentication required -- provide ?token= query parameter`.
+If authentication fails, the connection is immediately closed with code `1008` (Policy Violation).
 :::
 
 ---

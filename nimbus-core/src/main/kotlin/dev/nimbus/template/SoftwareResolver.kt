@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.fileSize
@@ -887,7 +888,7 @@ class SoftwareResolver {
             }
 
             val downloadUrl = "https://api.papermc.io/v2/projects/$project/versions/$version/builds/${latestBuild.build}/downloads/${downloadEntry.name}"
-            downloadFile(downloadUrl, targetDir, software, version, "build ${latestBuild.build}")
+            downloadFile(downloadUrl, targetDir, software, version, "build ${latestBuild.build}", expectedSha256 = downloadEntry.sha256)
         } catch (e: Exception) {
             logger.error("Failed to download {} {}: {}", software, version, e.message, e)
             null
@@ -952,7 +953,7 @@ class SoftwareResolver {
         }
     }
 
-    private suspend fun downloadFile(url: String, targetDir: Path, software: ServerSoftware, version: String, buildInfo: String): Path? {
+    private suspend fun downloadFile(url: String, targetDir: Path, software: ServerSoftware, version: String, buildInfo: String, expectedSha256: String? = null): Path? {
         val jarResponse = client.get(url)
         if (jarResponse.status != HttpStatusCode.OK) {
             logger.error("Failed to download {} {} {}: HTTP {}", software, version, buildInfo, jarResponse.status)
@@ -962,6 +963,19 @@ class SoftwareResolver {
         Files.createDirectories(targetDir)
         val targetFile = targetDir.resolve(jarFileName(software))
         val bytes = jarResponse.readRawBytes()
+
+        // Verify SHA-256 checksum if provided by the API
+        if (!expectedSha256.isNullOrBlank()) {
+            val actualSha256 = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                logger.error("SHA-256 mismatch for {} {} {}! Expected: {}, got: {}. Download rejected.",
+                    software, version, buildInfo, expectedSha256, actualSha256)
+                return null
+            }
+            logger.debug("SHA-256 verified for {} {} {}", software, version, buildInfo)
+        }
+
         Files.write(targetFile, bytes)
 
         val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)

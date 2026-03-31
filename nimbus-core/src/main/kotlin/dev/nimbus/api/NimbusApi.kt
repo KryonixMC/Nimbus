@@ -20,6 +20,7 @@ import io.ktor.server.cio.*
 import io.ktor.server.engine.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -28,8 +29,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration.Companion.seconds
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
 
@@ -72,24 +75,26 @@ class NimbusApi(
             return
         }
 
-        if (apiConfig.token.isBlank()) {
-            logger.warn("REST API token is empty — API will be accessible without authentication!")
+        val effectiveConfig = if (apiConfig.token.isBlank()) {
+            val generated = generateToken()
+            logger.warn("REST API token is empty — auto-generated token: {}", generated)
+            logger.warn("Set [api] token in nimbus.toml to use a persistent token.")
+            apiConfig.copy(token = generated)
+        } else {
+            apiConfig
         }
 
         try {
-            server = embeddedServer(CIO, port = apiConfig.port, host = apiConfig.bind) {
-                configurePlugins(apiConfig)
-                configureRoutes(apiConfig.token)
+            server = embeddedServer(CIO, port = effectiveConfig.port, host = effectiveConfig.bind) {
+                configurePlugins(effectiveConfig)
+                configureRoutes(effectiveConfig.token)
             }
 
             server?.start(wait = false)
-            logger.info("REST API started on http://{}:{}", apiConfig.bind, apiConfig.port)
+            logger.info("REST API started on http://{}:{}", effectiveConfig.bind, effectiveConfig.port)
 
             scope.launch {
-                eventBus.emit(NimbusEvent.ApiStarted(apiConfig.bind, apiConfig.port))
-                if (apiConfig.token.isBlank()) {
-                    eventBus.emit(NimbusEvent.ApiWarning("No auth token set — API is open! Set [api] token in nimbus.toml"))
-                }
+                eventBus.emit(NimbusEvent.ApiStarted(effectiveConfig.bind, effectiveConfig.port))
             }
         } catch (e: Exception) {
             logger.error("Failed to start REST API: {}", e.message)
@@ -135,6 +140,9 @@ class NimbusApi(
             val origins = apiConfig.allowedOrigins
             if (origins.isEmpty() || origins.singleOrNull() == "*") {
                 anyHost()
+                if (origins.isEmpty()) {
+                    logger.warn("No CORS origins configured — API accepts requests from any origin. Set [api] allowed_origins in nimbus.toml for production.")
+                }
             } else {
                 origins.forEach { allowHost(it, schemes = listOf("http", "https")) }
             }
@@ -145,6 +153,15 @@ class NimbusApi(
             allowMethod(HttpMethod.Put)
             allowMethod(HttpMethod.Delete)
             allowMethod(HttpMethod.Patch)
+        }
+
+        install(RateLimit) {
+            global {
+                rateLimiter(limit = 120, refillPeriod = 60.seconds)
+            }
+            register(RateLimitName("stress")) {
+                rateLimiter(limit = 5, refillPeriod = 60.seconds)
+            }
         }
 
         install(StatusPages) {
@@ -186,9 +203,6 @@ class NimbusApi(
                 ))
             }
 
-            // Metrics endpoint is always public (for Prometheus scraping)
-            metricsRoutes(registry, groupManager, nodeManager, loadBalancer, proxySyncManager, startedAt)
-
             // All other routes require auth if token is set
             val scopeRoots = mapOf(
                 "templates" to baseDir.resolve(config.paths.templates).toAbsolutePath(),
@@ -199,6 +213,7 @@ class NimbusApi(
             val maxUploadBytes = 100L * 1024 * 1024 // 100 MB
 
             val routeBlock: Route.() -> Unit = {
+                metricsRoutes(registry, groupManager, nodeManager, loadBalancer, proxySyncManager, startedAt)
                 serviceRoutes(registry, serviceManager, groupManager, eventBus)
                 groupRoutes(registry, groupManager, groupsDir, eventBus)
                 permissionRoutes(permissionManager, eventBus)
@@ -208,7 +223,9 @@ class NimbusApi(
                 proxySyncRoutes(proxySyncManager, eventBus)
                 maintenanceRoutes(proxySyncManager, eventBus)
                 if (stressTestManager != null) {
-                    stressRoutes(stressTestManager)
+                    rateLimit(RateLimitName("stress")) {
+                        stressRoutes(stressTestManager)
+                    }
                 }
                 fileRoutes(scopeRoots, readOnlyScopes, maxUploadBytes)
                 configRoutes(config, configPath)
@@ -241,6 +258,12 @@ class NimbusApi(
             val aBytes = a.toByteArray(Charsets.UTF_8)
             val bBytes = b.toByteArray(Charsets.UTF_8)
             return MessageDigest.isEqual(aBytes, bBytes)
+        }
+
+        private fun generateToken(): String {
+            val bytes = ByteArray(32)
+            SecureRandom().nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it) }
         }
     }
 }

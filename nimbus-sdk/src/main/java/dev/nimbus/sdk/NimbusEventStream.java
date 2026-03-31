@@ -172,6 +172,7 @@ public class NimbusEventStream implements AutoCloseable {
                     @Override
                     public void onOpen(WebSocket webSocket) {
                         logger.info("Connected to Nimbus event stream");
+                        reconnectAttempts = 0;
                         webSocketRef.set(webSocket);
                         webSocket.request(1);
                         if (firstConnect.compareAndSet(true, false)) {
@@ -226,12 +227,17 @@ public class NimbusEventStream implements AutoCloseable {
                 });
     }
 
+    private volatile int reconnectAttempts = 0;
+
     private void scheduleReconnect() {
         Thread.ofVirtual().start(() -> {
             try {
-                Thread.sleep(3000);
+                // Exponential backoff: 3s, 6s, 12s, 24s, capped at 30s
+                long delayMs = Math.min(3000L * (1L << Math.min(reconnectAttempts, 4)), 30_000L);
+                reconnectAttempts++;
+                logger.info("Reconnecting to event stream in " + (delayMs / 1000) + "s (attempt " + reconnectAttempts + ")...");
+                Thread.sleep(delayMs);
                 if (running.get()) {
-                    logger.info("Reconnecting to event stream...");
                     doConnect();
                 }
             } catch (InterruptedException ignored) {

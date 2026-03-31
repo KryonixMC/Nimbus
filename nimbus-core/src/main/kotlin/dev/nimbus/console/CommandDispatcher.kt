@@ -183,6 +183,12 @@ class CommandDispatcher {
                         else -> emptyList()
                     }
                 }
+                "purge" -> {
+                    val services = registry?.getAll()?.map { it.name } ?: emptyList()
+                    val options = mutableListOf("crashed")
+                    options.addAll(services)
+                    options.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                }
                 "maintenance" -> {
                     when (parts.size) {
                         2 -> {

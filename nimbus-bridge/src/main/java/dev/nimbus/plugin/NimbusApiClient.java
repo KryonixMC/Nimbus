@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Async HTTP client for the Nimbus Core REST API.
  */
-public class NimbusApiClient {
+public class NimbusApiClient implements AutoCloseable {
 
     private final String baseUrl;
     private final String token;
@@ -90,6 +90,11 @@ public class NimbusApiClient {
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> new ApiResult(response.statusCode(), response.body()))
                 .exceptionally(e -> new ApiResult(-1, e.getMessage()));
+    }
+
+    @Override
+    public void close() {
+        httpClient.close();
     }
 
     public record ApiResult(int statusCode, String body) {

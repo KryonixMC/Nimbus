@@ -2,17 +2,28 @@ package dev.nimbus.database
 
 import dev.nimbus.event.EventBus
 import dev.nimbus.event.NimbusEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class MetricsCollector(
     private val db: DatabaseManager,
     private val eventBus: EventBus
 ) {
     private val logger = LoggerFactory.getLogger(MetricsCollector::class.java)
+
+    /** Retention period for metrics data (30 days). */
+    private val retentionDays = 30L
 
     fun start(): List<Job> {
         val jobs = mutableListOf<Job>()
@@ -126,5 +137,32 @@ class MetricsCollector(
 
         logger.info("Metrics collector started ({} event subscriptions)", jobs.size)
         return jobs
+    }
+
+    /**
+     * Starts a periodic job that prunes metrics older than [retentionDays].
+     * Should be called once during bootstrap with the application's CoroutineScope.
+     */
+    fun startRetentionCleanup(scope: CoroutineScope): Job = scope.launch {
+        // Run daily
+        while (isActive) {
+            delay(24 * 60 * 60 * 1000L) // 24 hours
+            pruneOldMetrics()
+        }
+    }
+
+    private suspend fun pruneOldMetrics() {
+        val cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS).toString()
+        try {
+            db.query {
+                val deletedServices = ServiceEvents.deleteWhere { timestamp less cutoff }
+                val deletedScaling = ScalingEvents.deleteWhere { timestamp less cutoff }
+                val deletedSessions = PlayerSessions.deleteWhere { connectedAt less cutoff }
+                logger.info("Metrics retention cleanup: pruned {} service events, {} scaling events, {} player sessions older than {} days",
+                    deletedServices, deletedScaling, deletedSessions, retentionDays)
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to prune old metrics: {}", e.message)
+        }
     }
 }

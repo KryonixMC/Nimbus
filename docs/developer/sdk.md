@@ -33,11 +33,12 @@ public void onDisable() {
 }
 ```
 
-The SDK auto-discovers its identity from JVM system properties injected by Nimbus Core:
+The SDK auto-discovers its identity from JVM system properties and environment variables injected by Nimbus Core:
 
-| Property | Example | Description |
-|---|---|---|
-| `nimbus.service.name` | `BedWars-1` | Service name |
+| Source | Key | Example | Description |
+|---|---|---|---|
+| Env var | `NIMBUS_API_TOKEN` | `a1b2c3...` | API token (preferred, hidden from `ps`) |
+| Property | `nimbus.service.name` | `BedWars-1` | Service name |
 | `nimbus.service.group` | `BedWars` | Group name |
 | `nimbus.service.port` | `30001` | Server port |
 | `nimbus.api.url` | `http://127.0.0.1:8080` | API endpoint |

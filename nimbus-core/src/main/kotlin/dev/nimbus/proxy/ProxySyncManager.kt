@@ -3,7 +3,9 @@ package dev.nimbus.proxy
 import com.akuleshov7.ktoml.Toml
 import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.*
 
@@ -20,6 +22,7 @@ class ProxySyncManager(private val proxyDir: Path) {
 
     private val logger = LoggerFactory.getLogger(ProxySyncManager::class.java)
     private val toml = Toml()
+    private val writeLock = Any()
 
     private var config = ProxySyncConfig()
     private val playerTabOverrides = ConcurrentHashMap<String, String>()
@@ -253,16 +256,20 @@ class ProxySyncManager(private val proxyDir: Path) {
 
     // ── TOML Save ──────────────────────────────────────────────────
 
-    private fun saveMotd() {
-        proxyDir.resolve("motd.toml").writeText(buildMotdToml())
-    }
+    private fun saveMotd() = atomicWrite("motd.toml", buildMotdToml())
 
-    private fun saveTablist() {
-        proxyDir.resolve("tablist.toml").writeText(buildTablistToml())
-    }
+    private fun saveTablist() = atomicWrite("tablist.toml", buildTablistToml())
 
-    private fun saveChat() {
-        proxyDir.resolve("chat.toml").writeText(buildChatToml())
+    private fun saveChat() = atomicWrite("chat.toml", buildChatToml())
+
+    /** Writes content to a temp file first, then atomically renames to target. */
+    private fun atomicWrite(fileName: String, content: String) {
+        synchronized(writeLock) {
+            val target = proxyDir.resolve(fileName)
+            val tmp = proxyDir.resolve("$fileName.tmp")
+            tmp.writeText(content)
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        }
     }
 
     // ── TOML Builders ──────────────────────────────────────────────

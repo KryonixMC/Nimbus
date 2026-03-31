@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
  * });
  * }</pre>
  */
-public class NimbusClient {
+public class NimbusClient implements AutoCloseable {
 
     private final String baseUrl;
     private final String token;
@@ -358,5 +358,10 @@ public class NimbusClient {
 
     private static String getString(JsonObject obj, String key) {
         return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsString() : null;
+    }
+
+    @Override
+    public void close() {
+        httpClient.close();
     }
 }

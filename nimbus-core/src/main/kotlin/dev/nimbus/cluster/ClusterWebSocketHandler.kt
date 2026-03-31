@@ -51,6 +51,12 @@ class ClusterWebSocketHandler(
                 // Check for reconnection
                 val existingNode = nodeManager.getNode(nodeId)
                 if (existingNode != null) {
+                    // Clear stale remote handles from previous connection
+                    val staleHandles = existingNode.remoteHandles.keys.toList()
+                    existingNode.remoteHandles.clear()
+                    if (staleHandles.isNotEmpty()) {
+                        logger.info("Cleared {} stale remote handles from reconnecting node '{}'", staleHandles.size, nodeId)
+                    }
                     existingNode.reconnect(this)
                     existingNode.agentVersion = authMsg.agentVersion
                     logger.info("Node '{}' reconnected from {}", nodeId, host)

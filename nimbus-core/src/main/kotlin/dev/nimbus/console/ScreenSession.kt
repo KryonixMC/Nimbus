@@ -70,8 +70,11 @@ class ScreenSession {
                     }
                 }
 
-                // Wait for either job to finish
-                select(outputJob, inputJob)
+                // Wait for either job to finish, then cancel the other
+                kotlinx.coroutines.selects.select {
+                    outputJob.onJoin {}
+                    inputJob.onJoin {}
+                }
                 outputJob.cancel()
                 inputJob.cancel()
             }
@@ -86,10 +89,4 @@ class ScreenSession {
         }
     }
 
-    private suspend fun select(vararg jobs: Job) {
-        // Wait for the first job to complete
-        while (jobs.all { it.isActive }) {
-            delay(50)
-        }
-    }
 }

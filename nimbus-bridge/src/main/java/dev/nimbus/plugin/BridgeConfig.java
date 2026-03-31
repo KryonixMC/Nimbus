@@ -33,7 +33,11 @@ public class BridgeConfig {
         if (sysUrl != null && !sysUrl.isEmpty()) {
             BridgeConfig config = new BridgeConfig();
             config.apiUrl = sysUrl;
-            config.token = System.getProperty("nimbus.api.token", "");
+            // Token: prefer env var (hidden from ps), fall back to system property for backwards compat
+            String envToken = System.getenv("NIMBUS_API_TOKEN");
+            config.token = (envToken != null && !envToken.isEmpty())
+                    ? envToken
+                    : System.getProperty("nimbus.api.token", "");
             return config;
         }
 

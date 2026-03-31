@@ -30,11 +30,14 @@ class ProcessHandle : ServiceHandle {
         donePattern = pattern
     }
 
-    fun start(workDir: Path, command: List<String>) {
+    fun start(workDir: Path, command: List<String>, env: Map<String, String> = emptyMap()) {
         logger.info("Starting process in {} with command: {}", workDir, command)
         val pb = ProcessBuilder(command)
             .directory(workDir.toFile())
             .redirectErrorStream(true)
+        if (env.isNotEmpty()) {
+            pb.environment().putAll(env)
+        }
         process = pb.start()
         stdinWriter = BufferedWriter(OutputStreamWriter(process!!.outputStream))
 

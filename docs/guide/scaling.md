@@ -33,8 +33,12 @@ if fill_rate > scale_threshold
 | 3 | 27 | 56.3% | No action |
 | 3 | 40 | 83.3% | Scale up (> 80%) |
 
-::: info
-Only one instance is started per evaluation cycle. This prevents over-provisioning during sudden spikes. If demand continues, another instance will start on the next cycle (5 seconds later).
+::: info Cooldown
+Only one instance is started per evaluation cycle. After a scale-up, the engine waits **30 seconds** before scaling the same group again. After a scale-down, the cooldown is **120 seconds**. This prevents thrashing when player counts fluctuate rapidly.
+:::
+
+::: info Stress testing
+During an active stress test, the scaling engine is **completely paused** to avoid reacting to simulated player counts. Scaling resumes automatically when the stress test ends.
 :::
 
 ## Scale-down

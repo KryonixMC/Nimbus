@@ -81,15 +81,17 @@ class ServiceManager(
     }
 
     private suspend fun startLocalService(service: Service, prepared: ServiceFactory.PreparedService): Service? {
-        val (_, workDir, command, readyPattern, isModded, readyTimeout) = prepared
+        val (_, workDir, command, readyPattern, isModded, readyTimeout, env) = prepared
         val serviceName = service.name
 
+        val processHandle = ProcessHandle()
+        if (readyPattern != null) {
+            processHandle.setReadyPattern(readyPattern)
+        }
+
         return try {
-            val processHandle = ProcessHandle()
-            if (readyPattern != null) {
-                processHandle.setReadyPattern(readyPattern)
-            }
-            processHandle.start(workDir, command)
+            processHandle.start(workDir, command, env)
+            // Store handle immediately after start so cleanupFailedStart can find it
             processHandles[serviceName] = processHandle
 
             service.transitionTo(ServiceState.STARTING)
@@ -103,6 +105,8 @@ class ServiceManager(
             service
         } catch (e: Exception) {
             logger.error("Failed to start service '{}'", serviceName, e)
+            // Ensure the process is destroyed even if it wasn't stored in the map yet
+            processHandles[serviceName] = processHandle
             cleanupFailedStart(service)
             null
         }
@@ -220,10 +224,13 @@ class ServiceManager(
                     velocityConfigGen.updateProxyServerList()
                     reloadVelocity()
                 } else {
-                    logger.warn("Service '{}' did not become ready within timeout", serviceName)
+                    logger.warn("Service '{}' did not become ready within timeout — marking as CRASHED", serviceName)
+                    service.transitionTo(ServiceState.CRASHED)
+                    eventBus.emit(NimbusEvent.ServiceCrashed(serviceName, -1, service.restartCount))
                 }
             } catch (e: Exception) {
-                logger.error("Error waiting for service '{}' to become ready", serviceName, e)
+                logger.error("Error waiting for service '{}' to become ready — marking as CRASHED", serviceName, e)
+                service.transitionTo(ServiceState.CRASHED)
             }
         }
     }
@@ -338,9 +345,14 @@ class ServiceManager(
             return false
         }
 
+        // Atomic guard: only one thread can transition to STOPPING
+        if (!service.transitionTo(ServiceState.STOPPING)) {
+            logger.debug("Service '{}' is already stopping or stopped", name)
+            return false
+        }
+
         return try {
             eventBus.emit(NimbusEvent.ServiceStopping(name))
-            service.transitionTo(ServiceState.STOPPING)
             logger.info("Stopping service '{}'", name)
 
             val handle = processHandles[name]
@@ -371,6 +383,31 @@ class ServiceManager(
             logger.error("Error stopping service '{}'", name, e)
             false
         }
+    }
+
+    suspend fun purgeService(name: String) {
+        val service = registry.get(name) ?: throw IllegalArgumentException("Service '$name' not found")
+
+        logger.warn("Purging service '{}' (state: {})", name, service.state)
+
+        // Force-kill the process if it still exists
+        val handle = processHandles.remove(name)
+        handle?.destroy()
+
+        // Release resources
+        portAllocator.release(service.port)
+        service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
+        registry.unregister(name)
+
+        if (!service.isStatic) {
+            cleanupWorkingDirectory(service.workingDirectory)
+        }
+
+        velocityConfigGen.updateProxyServerList()
+        reloadVelocity()
+
+        eventBus.emit(NimbusEvent.ServiceStopped(name))
+        logger.info("Service '{}' purged", name)
     }
 
     suspend fun restartService(name: String): Service? {

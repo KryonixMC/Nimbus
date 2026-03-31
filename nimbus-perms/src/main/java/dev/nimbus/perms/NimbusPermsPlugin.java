@@ -34,7 +34,11 @@ public class NimbusPermsPlugin extends JavaPlugin implements Listener {
         }
 
         apiUrl = System.getProperty("nimbus.api.url");
-        token = System.getProperty("nimbus.api.token", "");
+        // Token: prefer env var (hidden from ps), fall back to system property for backwards compat
+        String envToken = System.getenv("NIMBUS_API_TOKEN");
+        token = (envToken != null && !envToken.isEmpty())
+                ? envToken
+                : System.getProperty("nimbus.api.token", "");
         if (apiUrl == null || apiUrl.isEmpty()) {
             getLogger().warning("No API URL configured — NimbusPerms disabled");
             getServer().getPluginManager().disablePlugin(this);

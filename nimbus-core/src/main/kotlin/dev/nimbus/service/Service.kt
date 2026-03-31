@@ -27,6 +27,7 @@ class Service(
     private var _state: ServiceState = initialState
     val state: ServiceState get() = _state
 
+    @Synchronized
     fun transitionTo(newState: ServiceState): Boolean {
         val allowed = when (_state) {
             ServiceState.PREPARING -> setOf(ServiceState.STARTING, ServiceState.STOPPED)

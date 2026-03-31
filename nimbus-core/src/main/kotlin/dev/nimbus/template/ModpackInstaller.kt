@@ -282,7 +282,11 @@ class ModpackInstaller(private val client: HttpClient) {
     }
 
     private suspend fun downloadFile(file: MrpackFile, templateDir: Path): Boolean {
-        val targetPath = templateDir.resolve(file.path)
+        val targetPath = templateDir.resolve(file.path).normalize()
+        if (!targetPath.startsWith(templateDir.normalize())) {
+            logger.warn("Path traversal blocked in modpack file: {}", file.path)
+            return false
+        }
         val targetDir = targetPath.parent
         if (!targetDir.exists()) targetDir.createDirectories()
 
@@ -341,13 +345,18 @@ class ModpackInstaller(private val client: HttpClient) {
     }
 
     private fun extractPrefix(zip: ZipFile, entries: List<java.util.zip.ZipEntry>, prefix: String, targetDir: Path) {
+        val normalizedTargetDir = targetDir.normalize()
         for (entry in entries) {
             if (!entry.name.startsWith(prefix) || entry.name == prefix) continue
 
             val relativePath = entry.name.removePrefix(prefix)
             if (relativePath.isEmpty()) continue
 
-            val target = targetDir.resolve(relativePath)
+            val target = targetDir.resolve(relativePath).normalize()
+            if (!target.startsWith(normalizedTargetDir)) {
+                logger.warn("Path traversal blocked in modpack override: {}", entry.name)
+                continue
+            }
 
             if (entry.isDirectory) {
                 if (!target.exists()) target.createDirectories()

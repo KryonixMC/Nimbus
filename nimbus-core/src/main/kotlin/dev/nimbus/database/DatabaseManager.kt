@@ -60,9 +60,8 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
     }
 
     private fun connectMysql(): Database {
-        val port = if (config.port == 3306) config.port else config.port
         return Database.connect(
-            url = "jdbc:mysql://${config.host}:$port/${config.name}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true",
+            url = "jdbc:mysql://${config.host}:${config.port}/${config.name}?createDatabaseIfNotExist=true&useSSL=true&requireSSL=true&allowPublicKeyRetrieval=false",
             driver = "com.mysql.cj.jdbc.Driver",
             user = config.username,
             password = config.password
@@ -72,7 +71,7 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
     private fun connectPostgresql(): Database {
         val port = if (config.port == 3306) 5432 else config.port
         return Database.connect(
-            url = "jdbc:postgresql://${config.host}:$port/${config.name}",
+            url = "jdbc:postgresql://${config.host}:$port/${config.name}?sslmode=prefer",
             driver = "org.postgresql.Driver",
             user = config.username,
             password = config.password

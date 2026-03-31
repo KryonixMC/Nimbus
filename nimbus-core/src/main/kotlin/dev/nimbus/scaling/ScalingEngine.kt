@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import dev.nimbus.stress.StressTestManager
 import org.slf4j.LoggerFactory
 import java.time.Duration
@@ -41,6 +42,17 @@ class ScalingEngine(
     /** Tracks consecutive zero-player readings per service to avoid acting on transient empties. */
     private val consecutiveZeroReadings = ConcurrentHashMap<String, Int>()
 
+    /** Cooldown tracking: last scale-up time per group to prevent thrashing. */
+    private val lastScaleUp = ConcurrentHashMap<String, Instant>()
+
+    /** Cooldown tracking: last scale-down time per group. */
+    private val lastScaleDown = ConcurrentHashMap<String, Instant>()
+
+    companion object {
+        private const val SCALE_UP_COOLDOWN_SECONDS = 30L
+        private const val SCALE_DOWN_COOLDOWN_SECONDS = 120L
+    }
+
     /**
      * Starts the scaling loop. Runs periodically every [checkIntervalMs].
      * @return a [Job] that can be cancelled to stop the engine.
@@ -62,7 +74,17 @@ class ScalingEngine(
      * for every dynamic group.
      */
     private suspend fun evaluate() {
-        updatePlayerCounts()
+        try {
+            updatePlayerCounts()
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            logger.warn("Player count update timed out (>15s), proceeding with stale data")
+        }
+
+        // Skip scaling decisions entirely during active stress tests to avoid reacting to fake players
+        if (stressTestManager?.isActive() == true) {
+            logger.debug("Stress test active — skipping scaling evaluation")
+            return
+        }
 
         for (group in groupManager.getAllGroups()) {
             if (group.isStatic) continue
@@ -90,6 +112,10 @@ class ScalingEngine(
             // Don't scale up if we already have services starting
             if (pendingCount > 0) continue
 
+            // Cooldown: skip if we recently scaled up this group
+            val lastUp = lastScaleUp[group.name]
+            if (lastUp != null && Duration.between(lastUp, Instant.now()).seconds < SCALE_UP_COOLDOWN_SECONDS) continue
+
             val scaleUpReason = ScalingRule.shouldScaleUp(
                 totalPlayers = totalPlayers,
                 readyInstances = routableCount,
@@ -110,9 +136,13 @@ class ScalingEngine(
                     )
                 )
                 serviceManager.startService(group.name)
+                lastScaleUp[group.name] = Instant.now()
             }
 
             // --- Scale Down ---
+            // Cooldown: skip if we recently scaled down this group
+            val lastDown = lastScaleDown[group.name]
+            if (lastDown != null && Duration.between(lastDown, Instant.now()).seconds < SCALE_DOWN_COOLDOWN_SECONDS) continue
             var currentRoutableCount = routableCount
             for (service in readyServices) {
                 // Never scale down a service with an active custom state (e.g. mid-game)
@@ -159,15 +189,20 @@ class ScalingEngine(
                     )
                     serviceManager.stopService(service.name)
                     idleSince.remove(service.name)
+                    lastScaleDown[group.name] = Instant.now()
                     currentRoutableCount--
                 }
             }
         }
 
-        // Clean up idleSince entries for services that no longer exist (manually stopped, crashed, etc.)
+        // Clean up tracking entries for services/groups that no longer exist
         val activeServiceNames = registry.getAll().map { it.name }.toSet()
         idleSince.keys.removeAll { it !in activeServiceNames }
         consecutiveZeroReadings.keys.removeAll { it !in activeServiceNames }
+
+        val activeGroupNames = groupManager.getAllGroups().map { it.name }.toSet()
+        lastScaleUp.keys.removeAll { it !in activeGroupNames }
+        lastScaleDown.keys.removeAll { it !in activeGroupNames }
     }
 
     /**
@@ -181,7 +216,7 @@ class ScalingEngine(
         // Only ping local services; remote services report via heartbeat
         val localServices = readyServices.filter { it.nodeId == "local" }
 
-        coroutineScope {
+        withTimeout(15_000L) {
             localServices.map { service ->
                 async(Dispatchers.IO) {
                     // Skip services with simulated player counts from stress testing

@@ -20,8 +20,12 @@ port = 8080
 token = "your-secret-token"
 ```
 
-::: warning
-If no token is configured, the API is open to anyone who can reach the port. Nimbus will log a warning.
+::: info Auto-generated token
+If no token is configured in `nimbus.toml`, Nimbus **auto-generates** a random token on each start and logs it to the console. The API is never unauthenticated. Set a permanent token in the config for production use.
+:::
+
+::: info Rate limiting
+The API enforces rate limits: **120 requests/minute** globally and **5 requests/minute** for stress test endpoints. Exceeding the limit returns HTTP 429 (Too Many Requests).
 :::
 
 ## Response Format

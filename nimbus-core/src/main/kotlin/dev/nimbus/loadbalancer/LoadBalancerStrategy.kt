@@ -17,7 +17,7 @@ class RoundRobinStrategy : LoadBalancerStrategy {
     private val counter = AtomicInteger(0)
 
     override fun select(candidates: List<Service>): Service {
-        val index = counter.getAndIncrement() % candidates.size
+        val index = Math.floorMod(counter.getAndIncrement(), candidates.size)
         return candidates[index]
     }
 }

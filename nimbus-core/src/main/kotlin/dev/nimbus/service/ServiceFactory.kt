@@ -47,7 +47,8 @@ class ServiceFactory(
         val command: List<String>,
         val readyPattern: Regex?,
         val isModded: Boolean,
-        val readyTimeout: kotlin.time.Duration
+        val readyTimeout: kotlin.time.Duration,
+        val env: Map<String, String> = emptyMap()
     )
 
     suspend fun prepare(groupName: String): PreparedService? {
@@ -244,10 +245,12 @@ class ServiceFactory(
             command.add("-Dnimbus.service.name=$serviceName")
             command.add("-Dnimbus.service.group=$groupName")
             command.add("-Dnimbus.service.port=$port")
+            // Pass API URL as system property (non-sensitive), token via env var (hidden from ps)
+            val processEnv = mutableMapOf<String, String>()
             if (config.api.enabled) {
                 command.add("-Dnimbus.api.url=http://127.0.0.1:${config.api.port}")
                 if (config.api.token.isNotBlank()) {
-                    command.add("-Dnimbus.api.token=${config.api.token}")
+                    processEnv["NIMBUS_API_TOKEN"] = config.api.token
                 }
             }
 
@@ -285,7 +288,7 @@ class ServiceFactory(
                 else -> null
             }
 
-            val readyTimeout = if (isModded) 180.seconds else 60.seconds
+            val readyTimeout = if (isModded) 180.seconds else 120.seconds
 
             PreparedService(
                 service = service,
@@ -293,11 +296,13 @@ class ServiceFactory(
                 command = command,
                 readyPattern = readyPattern,
                 isModded = isModded,
-                readyTimeout = readyTimeout
+                readyTimeout = readyTimeout,
+                env = processEnv
             )
         } catch (e: Exception) {
             logger.error("Failed to prepare service '{}'", serviceName, e)
             portAllocator.release(port)
+            service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
             registry.unregister(serviceName)
             null
         }

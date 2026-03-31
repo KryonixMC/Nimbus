@@ -62,7 +62,10 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 - `config/modules/syncproxy/motd.toml` — MOTD + maintenance mode config
 - `config/modules/syncproxy/tablist.toml` — Tab list header, footer, player format
 - `config/modules/syncproxy/chat.toml` — Chat format settings
-- Config keys use `snake_case`, group/service names use `PascalCase`
+- Config keys use `snake_case`, group/service names use `PascalCase` (validated: `[a-zA-Z0-9_-]` only)
+- Scaling cooldowns: 30s after scale-up, 120s after scale-down (per group)
+- Metrics retention: auto-pruned after 30 days
+- MySQL connections use SSL by default (`useSSL=true`)
 
 ## Key Patterns
 
@@ -76,7 +79,7 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 - Cardboard (BETA): optional Bukkit/Paper plugin support for Fabric servers, auto-downloads with iCommon dependency from Modrinth
 - Folia: SDK + NimbusPerms + ProtocolLib auto-excluded (incompatible with regionized threading)
 - Performance optimizer: Aikar's JVM flags + Paper/Purpur/Pufferfish/Folia config tuning (optimize=true default)
-- Process ready detection: watches stdout for "Done" pattern
+- Process ready detection: watches stdout for "Done" pattern (120s timeout, 180s for modded)
 - Graceful shutdown order: game servers → lobbies → proxies
 - Shutdown requires confirmation: `shutdown` then `shutdown confirm` within 30s
 - ProtocolLib auto-deployed to backend servers (embedded in JAR, tracked via `.nimbus-plugins`)
@@ -94,10 +97,12 @@ nimbus-core/src/main/kotlin/dev/nimbus/
 
 ## API (v0.2)
 
-- Bearer token auth (`Authorization: Bearer <token>`)
+- Bearer token auth (`Authorization: Bearer <token>`), auto-generated if not configured
 - REST: `/api/services`, `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/stress`, `/api/reload`, `/api/shutdown`, `/api/loadbalancer`, `/api/nodes`, `/api/metrics`
-- WebSocket: `/api/events` (live events), `/api/services/{name}/console` (bidirectional)
-- `/api/health` is always public (no auth)
+- WebSocket: `/api/events` (live events), `/api/services/{name}/console` (bidirectional) — auth via `Authorization` header or `?token=` query param
+- `/api/health` is always public (no auth), all other endpoints (including `/api/metrics`) require auth
+- Rate limiting: 120 requests/minute global, 5 requests/minute for stress endpoints
+- API token passed to child processes via `NIMBUS_API_TOKEN` environment variable (not visible in `ps`)
 
 ## Stress Testing
 
@@ -122,7 +127,7 @@ stress status                                        # Show live status
 ### Behavior
 - Only backend groups receive simulated players (proxy groups are excluded)
 - Each service is capped at its `max_players` config value
-- ScalingEngine reacts naturally (starts new instances up to `max_instances`)
+- ScalingEngine is **paused** during active stress tests (won't scale up/down based on fake players)
 - Proxy services auto-reflect total backend player count
 - Fake player entities appear in tab list on backend servers via ProtocolLib
 - `StressBot-*` events are suppressed from the console to avoid spam

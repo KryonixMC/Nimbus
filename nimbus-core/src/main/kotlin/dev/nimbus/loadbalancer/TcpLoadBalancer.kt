@@ -156,8 +156,8 @@ class TcpLoadBalancer(
             val lastActivity = AtomicLong(System.currentTimeMillis())
 
             coroutineScope {
-                launch { relay(client, backendChannel, config.bufferSize, lastActivity) }
-                launch { relay(backendChannel, client, config.bufferSize, lastActivity) }
+                val job1 = launch { relay(client, backendChannel, config.bufferSize, lastActivity) }
+                val job2 = launch { relay(backendChannel, client, config.bufferSize, lastActivity) }
                 launch {
                     // Idle timeout watchdog
                     while (isActive) {
@@ -167,6 +167,9 @@ class TcpLoadBalancer(
                         }
                     }
                 }
+                // When either relay direction ends, cancel the other to avoid half-open lingering
+                launch { job1.join(); cancel() }
+                launch { job2.join(); cancel() }
             }
         } catch (_: Exception) {
             // Connection closed or timed out

@@ -175,8 +175,8 @@ REST API and WebSocket server configuration.
 | `enabled` | Boolean | `true` | Enable the HTTP API server. Required for the bridge plugin and SDK to communicate with Nimbus. |
 | `bind` | String | `"127.0.0.1"` | Bind address for the API server. Use `127.0.0.1` for local-only access (recommended) or `0.0.0.0` for remote access. |
 | `port` | Int | `8080` | Port for the API server. |
-| `token` | String | `""` | Bearer token for API authentication. If empty, Nimbus auto-generates a secure token on first launch and prints it to the console. |
-| `allowed_origins` | List\<String\> | `[]` | CORS allowed origins. Only needed if accessing the API from a web browser. Empty list disables CORS headers. |
+| `token` | String | `""` | Bearer token for API authentication. If empty, Nimbus auto-generates a random token on **every start** and logs it to the console. Set a permanent token for production. |
+| `allowed_origins` | List\<String\> | `[]` | CORS allowed origins. Empty list allows all origins (with a warning). Set explicit origins for production (e.g., `["https://dashboard.example.com"]`). |
 
 ```toml
 [api]
@@ -192,7 +192,11 @@ The API token grants full control over your Nimbus instance. Keep it secret. If 
 :::
 
 ::: tip
-The `/api/health` endpoint is always public (no authentication required) and can be used for external health checks.
+The `/api/health` endpoint is always public (no authentication required) and can be used for external health checks. All other endpoints, including `/api/metrics`, require authentication.
+:::
+
+::: info Rate limiting
+The API enforces rate limits: 120 requests/minute globally, 5 requests/minute for stress test endpoints.
 :::
 
 ---
@@ -230,6 +234,10 @@ name = "nimbus"
 username = "nimbus"
 password = "secret"
 ```
+
+::: info SSL
+MySQL connections use SSL by default (`useSSL=true`). Ensure your MySQL server has SSL enabled, or use SQLite/PostgreSQL instead.
+:::
 
 ### PostgreSQL
 
