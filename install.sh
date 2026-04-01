@@ -239,18 +239,29 @@ install_screen() {
 create_start_script() {
     info "Creating start scripts..."
 
-    # start.sh — launches Nimbus in a detached screen session
+    # start.sh — starts Nimbus in screen and attaches, or reattaches if already running
+    # Usage: start.sh           → start + attach (interactive)
+    #        start.sh --detach  → start detached (for systemd)
     sudo tee "$INSTALL_DIR/start.sh" >/dev/null <<'SCRIPT'
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 cd "$SCRIPT_DIR"
 
 SESSION="nimbus"
+DETACH=false
+for arg in "$@"; do
+    if [[ "$arg" == "--detach" ]]; then
+        DETACH=true
+    fi
+done
 
-# If screen session already exists, don't start another
+# Already running? Attach if interactive, exit if detached.
 if screen -list | grep -q "\.$SESSION\b"; then
-    echo "Nimbus is already running. Use 'nimbus' to attach."
-    exit 0
+    if [[ "$DETACH" == true ]]; then
+        echo "Nimbus is already running."
+        exit 0
+    fi
+    exec screen -r "$SESSION"
 fi
 
 JAVA_OPTS="-Xms512M -Xmx1G"
@@ -264,26 +275,22 @@ JAVA_OPTS="$JAVA_OPTS -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPerc
 JAVA_OPTS="$JAVA_OPTS -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5"
 JAVA_OPTS="$JAVA_OPTS -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1"
 
-screen -dmS "$SESSION" java $JAVA_OPTS -jar nimbus.jar "$@"
-echo "Nimbus started in screen session '$SESSION'."
-echo "  Attach:  nimbus  (or: screen -r $SESSION)"
-echo "  Detach:  Ctrl+A, then D"
+if [[ "$DETACH" == true ]]; then
+    # Detached mode (systemd): start in background and return
+    screen -dmS "$SESSION" java $JAVA_OPTS -jar nimbus.jar
+else
+    # Interactive mode: start and attach immediately (Ctrl+A, D to detach)
+    exec screen -S "$SESSION" java $JAVA_OPTS -jar nimbus.jar
+fi
 SCRIPT
     sudo chmod +x "$INSTALL_DIR/start.sh"
 
-    # nimbus command — attach if running, start if not
+    # nimbus command — just calls start.sh (which handles attach-or-start)
     # Remove old symlink first (previous installs created a symlink here)
     sudo rm -f /usr/local/bin/nimbus
     sudo tee /usr/local/bin/nimbus >/dev/null <<'CMD'
 #!/usr/bin/env bash
-INSTALL_DIR="/opt/nimbus"
-SESSION="nimbus"
-
-if screen -list | grep -q "\.$SESSION\b"; then
-    screen -r "$SESSION"
-else
-    "$INSTALL_DIR/start.sh" "$@"
-fi
+exec /opt/nimbus/start.sh "$@"
 CMD
     sudo chmod +x /usr/local/bin/nimbus
     success "Created 'nimbus' command"
@@ -315,7 +322,7 @@ After=network.target
 Type=forking
 User=$service_user
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/start.sh
+ExecStart=$INSTALL_DIR/start.sh --detach
 ExecStop=/usr/bin/screen -S nimbus -X stuff "shutdown\nshutdown confirm\n"
 Restart=on-failure
 RestartSec=10
@@ -381,12 +388,9 @@ main() {
     read -rp "$(echo -e "${CYAN}[nimbus]${RESET} Start Nimbus now? [Y/n]: ")" start_now <"$TTY"
     if [[ "${start_now,,}" != "n" && "${start_now,,}" != "no" ]]; then
         echo ""
-        "$INSTALL_DIR/start.sh"
-        # Give screen a moment to start, then attach so user can interact with wizard
-        sleep 1
-        echo -e "  ${DIM}Attaching to Nimbus console... (Ctrl+A, D to detach)${RESET}"
+        echo -e "  ${DIM}Starting Nimbus... (Ctrl+A, D to detach from console)${RESET}"
         echo ""
-        screen -r nimbus
+        "$INSTALL_DIR/start.sh"
     else
         echo -e "  ${DIM}Run 'nimbus' when you're ready to start.${RESET}"
     fi
