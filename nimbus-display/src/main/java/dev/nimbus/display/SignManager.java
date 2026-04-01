@@ -4,8 +4,9 @@ import dev.nimbus.sdk.Nimbus;
 import dev.nimbus.sdk.NimbusDisplay;
 import dev.nimbus.sdk.NimbusGroup;
 import dev.nimbus.sdk.NimbusService;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import dev.nimbus.sdk.compat.SchedulerCompat;
+import dev.nimbus.sdk.compat.TextCompat;
+import dev.nimbus.sdk.compat.VersionHelper;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
@@ -21,10 +22,10 @@ import java.util.logging.Level;
 /**
  * Manages all Nimbus signs — loads from config, renders them with
  * display configs from the Nimbus API.
+ * <p>
+ * Uses {@link TextCompat} for cross-version sign rendering (1.8.8+).
  */
 public class SignManager {
-
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
     private final JavaPlugin plugin;
     private final SignConfig config;
@@ -120,24 +121,38 @@ public class SignManager {
         return true;
     }
 
-    /** Update all signs with live data. Runs on the main thread. */
+    /** Update all signs with live data. On Folia, each sign is updated on its location's region thread. */
     public void updateAll() {
-        Iterator<Map.Entry<String, NimbusSign>> it = signs.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, NimbusSign> entry = it.next();
-            NimbusSign nSign = entry.getValue();
-            Block block = nSign.location().getBlock();
-
-            // Cleanup: sign block was destroyed (explosion, piston, WorldEdit, etc.)
-            if (!(block.getState() instanceof Sign sign)) {
-                it.remove();
-                config.removeSign(nSign.id());
-                plugin.getLogger().info("Removed destroyed sign: " + nSign.id());
-                continue;
+        if (VersionHelper.isFolia()) {
+            // Folia: schedule each sign update on the region thread that owns its block
+            for (Map.Entry<String, NimbusSign> entry : signs.entrySet()) {
+                NimbusSign nSign = entry.getValue();
+                Location loc = nSign.location();
+                if (loc.getWorld() == null) continue;
+                SchedulerCompat.runAtLocation(plugin, loc, () -> updateSingleSign(entry.getKey(), nSign));
             }
-
-            updateSign(nSign, sign);
+        } else {
+            // Bukkit/Paper: all on main thread
+            Iterator<Map.Entry<String, NimbusSign>> it = signs.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, NimbusSign> entry = it.next();
+                updateSingleSign(entry.getKey(), entry.getValue());
+            }
         }
+    }
+
+    private void updateSingleSign(String key, NimbusSign nSign) {
+        Block block = nSign.location().getBlock();
+
+        // Cleanup: sign block was destroyed (explosion, piston, WorldEdit, etc.)
+        if (!(block.getState() instanceof Sign)) {
+            signs.remove(key);
+            config.removeSign(nSign.id());
+            plugin.getLogger().info("Removed destroyed sign: " + nSign.id());
+            return;
+        }
+
+        updateSign(nSign, (Sign) block.getState());
     }
 
     private void updateSign(NimbusSign nSign, Sign sign) {
@@ -149,10 +164,10 @@ public class SignManager {
         NimbusDisplay display = displayCache.get(groupName);
         if (display == null) {
             // No display config — show fallback
-            sign.line(0, LEGACY.deserialize("&c&l✖ " + target));
-            sign.line(1, LEGACY.deserialize("&7No display config"));
-            sign.line(2, Component.empty());
-            sign.line(3, Component.empty());
+            TextCompat.setSignLine(sign, 0, "&c&l✖ " + target);
+            TextCompat.setSignLine(sign, 1, "&7No display config");
+            TextCompat.setSignLineEmpty(sign, 2);
+            TextCompat.setSignLineEmpty(sign, 3);
             sign.update();
             return;
         }
@@ -196,24 +211,23 @@ public class SignManager {
         String l3 = display.getSignLine3();
         String l4 = available ? display.getSignLine4Online() : display.getSignLine4Offline();
 
-        sign.line(0, render(l1, target, players, maxPlayers, servers, state));
-        sign.line(1, render(l2, target, players, maxPlayers, servers, state));
-        sign.line(2, render(l3, target, players, maxPlayers, servers, state));
-        sign.line(3, render(l4, target, players, maxPlayers, servers, state));
+        TextCompat.setSignLine(sign, 0, render(l1, target, players, maxPlayers, servers, state));
+        TextCompat.setSignLine(sign, 1, render(l2, target, players, maxPlayers, servers, state));
+        TextCompat.setSignLine(sign, 2, render(l3, target, players, maxPlayers, servers, state));
+        TextCompat.setSignLine(sign, 3, render(l4, target, players, maxPlayers, servers, state));
         sign.update();
     }
 
-    private Component render(String template, String name, int players, int maxPlayers,
-                              int servers, String state) {
-        if (template == null) return Component.empty();
-        String text = template
+    private String render(String template, String name, int players, int maxPlayers,
+                           int servers, String state) {
+        if (template == null) return "";
+        return template
                 .replace("{name}", name)
                 .replace("{target}", name)
                 .replace("{players}", String.valueOf(players))
                 .replace("{max_players}", String.valueOf(maxPlayers))
                 .replace("{servers}", String.valueOf(servers))
                 .replace("{state}", state);
-        return LEGACY.deserialize(text);
     }
 
     private NimbusService findService(String name) {

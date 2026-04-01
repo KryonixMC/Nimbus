@@ -4,9 +4,9 @@ import dev.nimbus.sdk.Nimbus;
 import dev.nimbus.sdk.NimbusDisplay;
 import dev.nimbus.sdk.NimbusGroup;
 import dev.nimbus.sdk.NimbusService;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import org.bukkit.Bukkit;
+import dev.nimbus.sdk.compat.SchedulerCompat;
+import dev.nimbus.sdk.compat.TextCompat;
+import dev.nimbus.sdk.compat.VersionHelper;
 import org.bukkit.Location;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -15,8 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public class NpcManager {
-
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
     private final JavaPlugin plugin;
     private final NpcConfig config;
@@ -45,16 +43,16 @@ public class NpcManager {
 
         // All NPCs go through FancyNpcs — delay spawn to let FancyNpcs fully initialize
         plugin.getLogger().fine("Scheduling " + npcs.size() + " NPC(s) for delayed spawn...");
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            for (NimbusNpc npc : npcs.values()) {
+        for (NimbusNpc npc : npcs.values()) {
+            // Folia: schedule on each NPC's location region; Bukkit: main thread
+            SchedulerCompat.runAtLocationLater(plugin, npc.location(), () -> {
                 try {
                     renderer.spawn(npc);
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.WARNING, "Failed to spawn NPC '" + npc.id() + "'", e);
                 }
-            }
-            plugin.getLogger().fine("Delayed NPC spawn complete (" + npcs.size() + " NPCs)");
-        }, 200L); // 10 seconds
+            }, 200L); // 10 seconds
+        }
     }
 
     public void reload() {
@@ -67,11 +65,12 @@ public class NpcManager {
         for (NimbusNpc npc : config.loadNpcs()) {
             npcs.put(npc.id(), npc);
         }
-        // On reload, FancyNpcs is already initialized — spawn immediately
         for (NimbusNpc npc : npcs.values()) {
-            try { renderer.spawn(npc); } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to spawn NPC '" + npc.id() + "'", e);
-            }
+            SchedulerCompat.runAtLocation(plugin, npc.location(), () -> {
+                try { renderer.spawn(npc); } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "Failed to spawn NPC '" + npc.id() + "'", e);
+                }
+            });
         }
     }
 
@@ -81,11 +80,19 @@ public class NpcManager {
         }
     }
 
-    /** Update hologram text for all NPCs. Runs on main thread. */
+    /** Update hologram text for all NPCs. On Folia, each NPC is updated on its location's region thread. */
     public void updateAll() {
         for (NimbusNpc npc : npcs.values()) {
-            try { updateHologram(npc); } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Failed to update NPC '" + npc.id() + "'", e);
+            if (VersionHelper.isFolia()) {
+                SchedulerCompat.runAtLocation(plugin, npc.location(), () -> {
+                    try { updateHologram(npc); } catch (Exception e) {
+                        plugin.getLogger().log(Level.WARNING, "Failed to update NPC '" + npc.id() + "'", e);
+                    }
+                });
+            } else {
+                try { updateHologram(npc); } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "Failed to update NPC '" + npc.id() + "'", e);
+                }
             }
         }
     }
@@ -123,7 +130,8 @@ public class NpcManager {
 
         String state = display != null ? display.resolveState(rawState) : rawState;
 
-        Component[] lines = new Component[templates.size()];
+        // Render hologram lines as legacy color-coded strings
+        String[] lines = new String[templates.size()];
         for (int i = 0; i < templates.size(); i++) {
             lines[i] = render(templates.get(i), target, players, maxPlayers, servers, state);
         }
@@ -131,17 +139,16 @@ public class NpcManager {
         renderer.updateHolograms(npc, lines);
     }
 
-    private Component render(String template, String name, int players, int maxPlayers,
-                              int servers, String state) {
-        if (template == null) return Component.empty();
-        String text = template
+    private String render(String template, String name, int players, int maxPlayers,
+                           int servers, String state) {
+        if (template == null) return "";
+        return template
                 .replace("{name}", name)
                 .replace("{target}", name)
                 .replace("{players}", String.valueOf(players))
                 .replace("{max_players}", String.valueOf(maxPlayers))
                 .replace("{servers}", String.valueOf(servers))
                 .replace("{state}", state);
-        return LEGACY.deserialize(text);
     }
 
     // ── Accessors ─────────────────────────────────────────────────────
@@ -168,15 +175,19 @@ public class NpcManager {
     public void addNpc(NimbusNpc npc) {
         npcs.put(npc.id(), npc);
         config.addNpc(npc);
-        try { renderer.spawn(npc); } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to spawn NPC '" + npc.id() + "'", e);
-        }
+        SchedulerCompat.runAtLocation(plugin, npc.location(), () -> {
+            try { renderer.spawn(npc); } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to spawn NPC '" + npc.id() + "'", e);
+            }
+        });
     }
 
     public void removeNpc(String id) {
         NimbusNpc npc = npcs.remove(id);
         if (npc != null) {
-            try { renderer.despawn(npc); } catch (Exception ignored) {}
+            SchedulerCompat.runAtLocation(plugin, npc.location(), () -> {
+                try { renderer.despawn(npc); } catch (Exception ignored) {}
+            });
         }
         config.removeNpc(id);
     }
@@ -186,17 +197,18 @@ public class NpcManager {
         NimbusNpc old = npcs.get(id);
         if (old == null) return;
 
-        // Despawn old
-        try { renderer.despawn(old); } catch (Exception ignored) {}
+        SchedulerCompat.runAtLocation(plugin, old.location(), () -> {
+            try { renderer.despawn(old); } catch (Exception ignored) {}
+        });
 
-        // Store and persist
         npcs.put(id, updated);
         config.removeNpc(id);
         config.addNpc(updated);
 
-        // Respawn with new settings
-        try { renderer.spawn(updated); } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to respawn NPC '" + id + "'", e);
-        }
+        SchedulerCompat.runAtLocation(plugin, updated.location(), () -> {
+            try { renderer.spawn(updated); } catch (Exception e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to respawn NPC '" + id + "'", e);
+            }
+        });
     }
 }

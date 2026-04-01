@@ -3,7 +3,8 @@ package dev.nimbus.perms.display;
 import dev.nimbus.perms.provider.PermissionProvider;
 import dev.nimbus.sdk.ColorUtil;
 import dev.nimbus.sdk.Nimbus;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import dev.nimbus.sdk.compat.SchedulerCompat;
+import dev.nimbus.sdk.compat.TextCompat;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -17,13 +18,14 @@ import java.util.logging.Logger;
 /**
  * Manages player name tags (above head) using Scoreboard Teams.
  * Syncs prefix/suffix from the permission provider.
+ * <p>
+ * Compatible with both modern Paper (Adventure) and legacy Spigot (1.8+).
  */
 public class NameTagHandler {
 
     private final JavaPlugin plugin;
     private final Logger logger;
     private final PermissionProvider provider;
-    private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
     private final ConcurrentHashMap<UUID, String> tabOverrides = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, String> playerTeams = new ConcurrentHashMap<>();
@@ -39,11 +41,10 @@ public class NameTagHandler {
     public void start() {
         if (Nimbus.events() != null) {
             Nimbus.events().onEvent("PERMISSION_GROUP_UPDATED", e -> {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    for (Player player : Bukkit.getOnlinePlayers()) {
-                        applyNameTag(player);
-                    }
-                });
+                // Schedule per-player to run on each player's region thread (Folia)
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    SchedulerCompat.runForEntity(plugin, player, () -> applyNameTag(player));
+                }
             });
 
             Nimbus.events().onEvent("PLAYER_PERMISSIONS_UPDATED", e -> {
@@ -51,9 +52,11 @@ public class NameTagHandler {
                 if (uuid != null) {
                     try {
                         UUID playerUuid = UUID.fromString(uuid);
-                        Bukkit.getScheduler().runTask(plugin, () -> {
+                        SchedulerCompat.runTask(plugin, () -> {
                             Player player = Bukkit.getPlayer(playerUuid);
-                            if (player != null) applyNameTag(player);
+                            if (player != null) {
+                                SchedulerCompat.runForEntity(plugin, player, () -> applyNameTag(player));
+                            }
                         });
                     } catch (IllegalArgumentException ignored) {}
                 }
@@ -70,9 +73,11 @@ public class NameTagHandler {
                     } else {
                         tabOverrides.remove(playerUuid);
                     }
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    SchedulerCompat.runTask(plugin, () -> {
                         Player player = Bukkit.getPlayer(playerUuid);
-                        if (player != null) applyNameTag(player);
+                        if (player != null) {
+                            SchedulerCompat.runForEntity(plugin, player, () -> applyNameTag(player));
+                        }
                     });
                 } catch (IllegalArgumentException ignored) {}
             });
@@ -83,7 +88,8 @@ public class NameTagHandler {
 
     public void onJoin(Player player) {
         // Defer to allow provider to load display data first
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        // Use entity-bound scheduling so the task runs on the player's region thread (Folia)
+        SchedulerCompat.runForEntityLater(plugin, player, () -> {
             if (player.isOnline()) applyNameTag(player);
         }, 5L);
     }
@@ -155,8 +161,9 @@ public class NameTagHandler {
             team = scoreboard.registerNewTeam(teamName);
         }
 
-        team.prefix(miniMessage.deserialize(prefix));
-        team.suffix(miniMessage.deserialize(suffix));
+        // Use TextCompat for cross-version prefix/suffix support
+        TextCompat.setTeamPrefix(team, prefix);
+        TextCompat.setTeamSuffix(team, suffix);
 
         team.addEntry(player.getName());
         playerTeams.put(uuid, teamName);
