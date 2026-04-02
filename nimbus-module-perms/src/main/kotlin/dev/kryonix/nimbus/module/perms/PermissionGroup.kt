@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.permissions
+package dev.kryonix.nimbus.module.perms
 
 /**
  * Represents a permission group with a name, permissions, display info, and optional inheritance.

@@ -1,10 +1,10 @@
-package dev.kryonix.nimbus.api.routes
+package dev.kryonix.nimbus.module.perms.routes
 
 import dev.kryonix.nimbus.api.*
 import dev.kryonix.nimbus.event.EventBus
 import dev.kryonix.nimbus.event.NimbusEvent
-import dev.kryonix.nimbus.permissions.PermissionContext
-import dev.kryonix.nimbus.permissions.PermissionManager
+import dev.kryonix.nimbus.module.perms.PermissionContext
+import dev.kryonix.nimbus.module.perms.PermissionManager
 import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -57,26 +57,22 @@ fun Route.permissionRoutes(
                     ?: return@put call.respond(HttpStatusCode.NotFound, ApiMessage(false, "Permission group '$name' not found"))
 
                 val request = call.receive<UpdatePermissionGroupRequest>()
-                if (request.default != null) {
-                    permissionManager.setDefault(group.name, request.default)
-                }
+                request.default?.let { permissionManager.setDefault(group.name, it) }
                 if (request.prefix != null || request.suffix != null || request.priority != null) {
                     permissionManager.updateGroupDisplay(group.name, request.prefix, request.suffix, request.priority)
                 }
-                if (request.weight != null) {
-                    permissionManager.setGroupWeight(group.name, request.weight)
-                }
-                if (request.permissions != null) {
+                request.weight?.let { permissionManager.setGroupWeight(group.name, it) }
+                request.permissions?.let {
                     group.permissions.clear()
-                    group.permissions.addAll(request.permissions)
+                    group.permissions.addAll(it)
                 }
-                if (request.parents != null) {
+                request.parents?.let {
                     group.parents.clear()
-                    group.parents.addAll(request.parents)
+                    group.parents.addAll(it)
                 }
-                if (request.meta != null) {
+                request.meta?.let {
                     group.meta.clear()
-                    group.meta.putAll(request.meta)
+                    group.meta.putAll(it)
                 }
 
                 permissionManager.logAudit("api", "group.update", group.name, "Updated group '${group.name}'")
@@ -401,7 +397,7 @@ fun Route.permissionRoutes(
     }
 }
 
-private fun dev.kryonix.nimbus.permissions.PermissionGroup.toResponse() = PermissionGroupResponse(
+private fun dev.kryonix.nimbus.module.perms.PermissionGroup.toResponse() = PermissionGroupResponse(
     name = name,
     default = default,
     prefix = prefix,

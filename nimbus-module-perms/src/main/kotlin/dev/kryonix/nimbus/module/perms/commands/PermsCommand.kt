@@ -1,10 +1,10 @@
-package dev.kryonix.nimbus.console.commands
+package dev.kryonix.nimbus.module.perms.commands
 
 import dev.kryonix.nimbus.console.Command
 import dev.kryonix.nimbus.console.ConsoleFormatter
 import dev.kryonix.nimbus.event.EventBus
 import dev.kryonix.nimbus.event.NimbusEvent
-import dev.kryonix.nimbus.permissions.PermissionManager
+import dev.kryonix.nimbus.module.perms.PermissionManager
 
 class PermsCommand(
     private val permissionManager: PermissionManager,

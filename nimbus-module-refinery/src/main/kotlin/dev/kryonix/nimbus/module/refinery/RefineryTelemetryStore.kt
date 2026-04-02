@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.refinery
+package dev.kryonix.nimbus.module.refinery
 
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap

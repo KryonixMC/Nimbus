@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.refinery
+package dev.kryonix.nimbus.module.refinery
 
 import dev.kryonix.nimbus.event.EventBus
 import dev.kryonix.nimbus.event.NimbusEvent

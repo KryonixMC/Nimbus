@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.permissions
+package dev.kryonix.nimbus.module.perms
 
 /**
  * Result of a permission debug check — explains WHY a permission was granted or denied.

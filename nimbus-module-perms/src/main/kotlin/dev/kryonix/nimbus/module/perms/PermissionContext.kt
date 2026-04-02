@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.permissions
+package dev.kryonix.nimbus.module.perms
 
 /**
  * Context for scoped permissions — limits where a permission or group assignment is active.

@@ -1,7 +1,8 @@
-package dev.kryonix.nimbus.api.routes
+package dev.kryonix.nimbus.module.display.routes
 
 import dev.kryonix.nimbus.api.*
-import dev.kryonix.nimbus.display.DisplayManager
+import dev.kryonix.nimbus.module.display.DisplayConfig
+import dev.kryonix.nimbus.module.display.DisplayManager
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -34,7 +35,7 @@ fun Route.displayRoutes(displayManager: DisplayManager) {
     }
 }
 
-private fun dev.kryonix.nimbus.display.DisplayConfig.toResponse(): DisplayResponse {
+private fun DisplayConfig.toResponse(): DisplayResponse {
     return DisplayResponse(
         name = display.name,
         sign = SignDisplayResponse(

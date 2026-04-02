@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.display
+package dev.kryonix.nimbus.module.display
 
 import dev.kryonix.nimbus.config.GroupConfig
 import dev.kryonix.nimbus.config.ServerSoftware

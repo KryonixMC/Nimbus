@@ -31,11 +31,6 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
 
         transaction(database) {
             SchemaUtils.createMissingTablesAndColumns(
-                PermissionGroups, GroupPermissions, GroupParents,
-                Players, PlayerGroups,
-                GroupMeta, PlayerMeta,
-                GroupPermissionContexts, PlayerGroupContexts,
-                PermissionTracks, PermissionAuditLog,
                 ServiceEvents, ScalingEvents, PlayerSessions
             )
         }
@@ -81,4 +76,11 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
 
     suspend fun <T> query(block: Transaction.() -> T): T =
         newSuspendedTransaction(Dispatchers.IO, database) { block() }
+
+    /** Creates tables if they don't exist. Used by modules to register their own tables. */
+    fun createTables(vararg tables: org.jetbrains.exposed.sql.Table) {
+        transaction(database) {
+            SchemaUtils.createMissingTablesAndColumns(*tables)
+        }
+    }
 }

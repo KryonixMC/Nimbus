@@ -6,8 +6,6 @@ import dev.kryonix.nimbus.group.GroupManager
 import dev.kryonix.nimbus.module.ModuleContext
 import dev.kryonix.nimbus.module.NimbusModule
 import dev.kryonix.nimbus.module.service
-import dev.kryonix.nimbus.refinery.RefineryCommand
-import dev.kryonix.nimbus.refinery.RefineryIntegration
 import dev.kryonix.nimbus.service.ServiceRegistry
 
 class RefineryModule : NimbusModule {

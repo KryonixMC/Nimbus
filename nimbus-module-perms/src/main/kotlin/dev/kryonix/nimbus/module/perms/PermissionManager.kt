@@ -1,6 +1,6 @@
-package dev.kryonix.nimbus.permissions
+package dev.kryonix.nimbus.module.perms
 
-import dev.kryonix.nimbus.database.*
+import dev.kryonix.nimbus.database.DatabaseManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive

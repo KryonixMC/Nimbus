@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.display
+package dev.kryonix.nimbus.module.display
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -18,13 +18,13 @@ data class DisplayDefinition(
 
 @Serializable
 data class SignDisplay(
-    val line1: String = "&1&l★ {name} ★",
+    val line1: String = "&1&l\u2605 {name} \u2605",
     val line2: String = "&8{players}/{max_players} online",
     val line3: String = "&7{state}",
     @SerialName("line4_online")
-    val line4Online: String = "&2▶ Click to join!",
+    val line4Online: String = "&2\u25b6 Click to join!",
     @SerialName("line4_offline")
-    val line4Offline: String = "&4✖ Offline"
+    val line4Offline: String = "&4\u2716 Offline"
 )
 
 @Serializable
@@ -33,7 +33,7 @@ data class NpcDisplay(
     val displayName: String = "&b&l{name}",
     val subtitle: String = "&7{players}/{max_players} online &8| &7{state}",
     @SerialName("subtitle_offline")
-    val subtitleOffline: String = "&c✖ Offline",
+    val subtitleOffline: String = "&c\u2716 Offline",
     @SerialName("floating_item")
     val floatingItem: String = "GRASS_BLOCK",
     @SerialName("status_items")
@@ -43,7 +43,7 @@ data class NpcDisplay(
 
 @Serializable
 data class NpcInventoryConfig(
-    val title: String = "&8» &b&l{name} Servers",
+    val title: String = "&8\u00bb &b&l{name} Servers",
     val size: Int = 27,
     @SerialName("item_name")
     val itemName: String = "&b{name}",

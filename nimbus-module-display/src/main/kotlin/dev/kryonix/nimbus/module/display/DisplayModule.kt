@@ -1,9 +1,8 @@
 package dev.kryonix.nimbus.module.display
 
 import dev.kryonix.nimbus.NimbusVersion
-import dev.kryonix.nimbus.api.routes.displayRoutes
-import dev.kryonix.nimbus.display.DisplayManager
 import dev.kryonix.nimbus.group.GroupManager
+import dev.kryonix.nimbus.module.display.routes.displayRoutes
 import dev.kryonix.nimbus.module.ModuleContext
 import dev.kryonix.nimbus.module.NimbusModule
 import dev.kryonix.nimbus.module.service

@@ -1,4 +1,4 @@
-package dev.kryonix.nimbus.permissions
+package dev.kryonix.nimbus.module.perms
 
 /**
  * A promotion/demotion track — an ordered list of groups from lowest to highest rank.
