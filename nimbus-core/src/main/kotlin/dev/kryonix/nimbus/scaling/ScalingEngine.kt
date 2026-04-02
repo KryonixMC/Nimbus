@@ -128,7 +128,8 @@ class ScalingEngine(
                 readyInstances = routableCount,
                 maxInstances = maxInstances,
                 playersPerInstance = playersPerInstance,
-                scaleThreshold = scaleThreshold
+                scaleThreshold = scaleThreshold,
+                minInstances = minInstances
             )
 
             if (scaleUpReason != null) {

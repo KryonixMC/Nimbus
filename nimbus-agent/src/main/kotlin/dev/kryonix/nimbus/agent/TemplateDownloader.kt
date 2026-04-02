@@ -49,10 +49,18 @@ class TemplateDownloader(
         templateDir.createDirectories()
 
         val bytes = response.readRawBytes()
+        val normalizedTemplateDir = templateDir.normalize().toAbsolutePath()
         ZipInputStream(bytes.inputStream()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                val target = templateDir.resolve(entry.name)
+                val target = normalizedTemplateDir.resolve(entry.name).normalize()
+                // Zip Slip protection: ensure extracted path stays within template directory
+                if (!target.startsWith(normalizedTemplateDir)) {
+                    logger.warn("Skipping malicious ZIP entry '{}' (path traversal attempt)", entry.name)
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                    continue
+                }
                 if (entry.isDirectory) {
                     target.createDirectories()
                 } else {

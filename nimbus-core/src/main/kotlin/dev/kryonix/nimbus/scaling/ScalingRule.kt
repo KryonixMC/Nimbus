@@ -14,9 +14,13 @@ object ScalingRule {
         readyInstances: Int,
         maxInstances: Int,
         playersPerInstance: Int,
-        scaleThreshold: Double
+        scaleThreshold: Double,
+        minInstances: Int = 0
     ): String? {
-        if (readyInstances == 0) return null
+        // If no instances are ready but minInstances requires some, scale up to recover
+        if (readyInstances == 0) {
+            return if (minInstances > 0) "no ready instances (min_instances=$minInstances)" else null
+        }
 
         val fillRate = totalPlayers.toDouble() / (readyInstances * playersPerInstance)
 
