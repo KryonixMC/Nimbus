@@ -106,6 +106,7 @@ class NimbusConsole(
             dispatcher.register(CreateGroupCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
             dispatcher.register(ImportCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
             dispatcher.register(UpdateCommand(terminal, groupManager, registry, softwareResolver, groupsDir, templatesDir, this))
+            dispatcher.register(PluginsCommand(config, registry, groupManager, softwareResolver, terminal))
         }
         if (groupsDir != null) {
             dispatcher.register(StaticCommand(serviceManager, registry, groupManager, groupsDir))

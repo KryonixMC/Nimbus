@@ -235,6 +235,34 @@ class CommandDispatcher {
                         else -> emptyList()
                     }
                 }
+                "plugins" -> {
+                    val pluginNames = listOf("sdk", "perms", "display", "fancynpcs", "viaversion", "viabackwards", "viarewind", "geyser", "floodgate")
+                    when (parts.size) {
+                        2 -> listOf("list", "install", "remove", "check")
+                            .filter { it.startsWith(argPrefix, ignoreCase = true) }
+                        3 -> when (parts[1].lowercase()) {
+                            "install", "remove" -> pluginNames
+                                .filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            "list", "check" -> {
+                                val targets = mutableListOf("global", "global_proxy")
+                                targets.addAll(groupManager?.getAllGroups()?.map { it.name } ?: emptyList())
+                                targets.addAll(registry?.getAll()?.filter { it.isStatic }?.map { it.name } ?: emptyList())
+                                targets.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            }
+                            else -> emptyList()
+                        }
+                        4 -> when (parts[1].lowercase()) {
+                            "install", "remove" -> {
+                                val targets = mutableListOf("global", "global_proxy")
+                                targets.addAll(groupManager?.getAllGroups()?.map { it.name } ?: emptyList())
+                                targets.addAll(registry?.getAll()?.filter { it.isStatic }?.map { it.name } ?: emptyList())
+                                targets.filter { it.startsWith(argPrefix, ignoreCase = true) }
+                            }
+                            else -> emptyList()
+                        }
+                        else -> emptyList()
+                    }
+                }
                 else -> emptyList()
             }
         }

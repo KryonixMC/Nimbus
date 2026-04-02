@@ -270,7 +270,12 @@ class SetupWizard(
                                     groups.add(GroupEntry(name, sw, ver, min, max, mem, vias))
                                     done(w, "$name ${ConsoleFormatter.hint("($sw $ver, $mem, $min-$max instances)")}")
                                     w.println()
-                                    addMore = promptYesNo(terminal, "  Add another group?", false)
+                                    val addMoreOptions = listOf(
+                                        InteractivePicker.Option("add", "Add another group"),
+                                        InteractivePicker.Option("done", "Done, continue setup")
+                                    )
+                                    val addMoreIndex = InteractivePicker.pickOne(terminal, addMoreOptions, 1)
+                                    addMore = addMoreIndex == 0
                                 }
                             }
                         }
@@ -400,7 +405,12 @@ class SetupWizard(
                             }
                             w.println()
 
-                            if (promptYesNo(terminal, "  Create start script?", true)) {
+                            val scriptOptions = listOf(
+                                InteractivePicker.Option("yes", "Yes, create start script"),
+                                InteractivePicker.Option("no", "No, skip")
+                            )
+                            val scriptIndex = InteractivePicker.pickOne(terminal, scriptOptions, 0)
+                            if (scriptIndex == 0) {
                                 writeStartScript(detectedOs)
                                 w.println("  ${ConsoleFormatter.colorize("+", ConsoleFormatter.GREEN)} $startScriptName")
                                 w.println()
@@ -483,16 +493,6 @@ class SetupWizard(
         val defaultHint = if (default.isNotEmpty()) " ${ConsoleFormatter.hint("[$default]")}" else ""
         val line = reader.readLine("$label$defaultHint${ConsoleFormatter.hint(":")} ").trim()
         return line.ifEmpty { default }
-    }
-
-    private fun promptYesNo(terminal: Terminal, label: String, default: Boolean): Boolean {
-        val hint = if (default) "Y/n" else "y/N"
-        val answer = prompt(terminal, label, hint, candidates = listOf("y", "n"))
-        return when (answer.lowercase()) {
-            "y", "yes" -> true
-            "n", "no" -> false
-            else -> default
-        }
     }
 
     private fun promptInt(terminal: Terminal, label: String, default: Int): Int {
