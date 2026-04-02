@@ -8,10 +8,10 @@ import dev.kryonix.nimbus.event.EventBus
 import dev.kryonix.nimbus.event.NimbusEvent
 import dev.kryonix.nimbus.group.GroupManager
 import dev.kryonix.nimbus.loadbalancer.TcpLoadBalancer
-import dev.kryonix.nimbus.permissions.PermissionManager
 import dev.kryonix.nimbus.service.CompatibilityChecker
 import dev.kryonix.nimbus.service.ServiceManager
 import dev.kryonix.nimbus.service.ServiceRegistry
+import dev.kryonix.nimbus.module.ModuleManager
 import dev.kryonix.nimbus.stress.StressTestManager
 import dev.kryonix.nimbus.template.SoftwareResolver
 import kotlinx.coroutines.CoroutineScope
@@ -38,18 +38,18 @@ class NimbusConsole(
     private val groupsDir: Path? = null,
     private val softwareResolver: SoftwareResolver? = null,
     private val api: NimbusApi? = null,
-    private val permissionManager: PermissionManager? = null,
     private val proxySyncManager: dev.kryonix.nimbus.proxy.ProxySyncManager? = null,
     private val nodeManager: NodeManager? = null,
     private val loadBalancer: TcpLoadBalancer? = null,
     private val configPath: Path? = null,
     private val stressTestManager: StressTestManager? = null,
-    private val refineryIntegration: dev.kryonix.nimbus.refinery.RefineryIntegration? = null
+    private val moduleManager: ModuleManager? = null,
+    private val sharedDispatcher: CommandDispatcher? = null
 ) {
 
     private val logger = LoggerFactory.getLogger(NimbusConsole::class.java)
 
-    private val dispatcher = CommandDispatcher()
+    private val dispatcher = sharedDispatcher ?: CommandDispatcher()
     private lateinit var terminal: Terminal
     private lateinit var lineReader: LineReader
     private var eventListenerJob: Job? = null
@@ -106,6 +106,7 @@ class NimbusConsole(
             dispatcher.register(CreateGroupCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
             dispatcher.register(ImportCommand(terminal, groupManager, serviceManager, softwareResolver, groupsDir, templatesDir, this))
             dispatcher.register(UpdateCommand(terminal, groupManager, registry, softwareResolver, groupsDir, templatesDir, this))
+            dispatcher.register(PluginsCommand(config, registry, groupManager, softwareResolver, terminal))
         }
         if (groupsDir != null) {
             dispatcher.register(StaticCommand(serviceManager, registry, groupManager, groupsDir))
@@ -113,9 +114,6 @@ class NimbusConsole(
         }
         if (api != null) {
             dispatcher.register(ApiCommand(api))
-        }
-        if (permissionManager != null) {
-            dispatcher.register(PermsCommand(permissionManager, eventBus))
         }
         if (proxySyncManager != null) {
             dispatcher.register(MaintenanceCommand(proxySyncManager, groupManager, eventBus))
@@ -130,8 +128,9 @@ class NimbusConsole(
         if (stressTestManager != null) {
             dispatcher.register(StressCommand(stressTestManager, registry, groupManager))
         }
-        if (refineryIntegration != null) {
-            dispatcher.register(dev.kryonix.nimbus.refinery.RefineryCommand(refineryIntegration, registry))
+        if (moduleManager != null) {
+            val templatesPath = java.nio.file.Path.of(config.paths.templates)
+            dispatcher.register(ModulesCommand(moduleManager, terminal, groupManager, templatesPath))
         }
         dispatcher.register(ClearCommand(terminal))
         dispatcher.register(ShutdownCommand(serviceManager, registry))
