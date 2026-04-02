@@ -124,7 +124,8 @@ class SetupWizard(
                 availableModules.filter { it.defaultEnabled }.forEach { selectedModules.add(it.id) }
 
                 // Interactive picker
-                pickModules(terminal, w, availableModules, selectedModules)
+                val moduleOptions = availableModules.map { PickerOption(it.id, it.name, it.description) }
+                pickMany(terminal, moduleOptions, selectedModules)
 
                 val moduleCount = selectedModules.size
                 if (moduleCount > 0) {
@@ -142,14 +143,14 @@ class SetupWizard(
             stepHeader(w, 4, "Server Groups")
             w.println()
 
-            w.println("  ${ConsoleFormatter.colorize("Choose a template:", ConsoleFormatter.BOLD)}")
-            w.println("    ${CYAN}1$RESET  Standard Lobby  ${ConsoleFormatter.hint("(Proxy + Lobby)")}")
-            w.println("    ${CYAN}2$RESET  Lobby + Games   ${ConsoleFormatter.hint("(Proxy + Lobby + Minigame server)")}")
-            w.println("    ${CYAN}3$RESET  Custom          ${ConsoleFormatter.hint("(configure everything yourself)")}")
-            w.println()
-
-            val templateChoice = prompt(terminal, "  Template", "1",
-                candidates = listOf("1", "2", "3"))
+            val templateOptions = listOf(
+                PickerOption("1", "Standard Lobby", "Proxy + Lobby"),
+                PickerOption("2", "Lobby + Games", "Proxy + Lobby + Minigame server"),
+                PickerOption("3", "Custom", "configure everything yourself")
+            )
+            val templateIndex = pickOne(terminal, templateOptions)
+            val templateChoice = templateOptions[templateIndex].id
+            done(w, templateOptions[templateIndex].label)
 
             data class GroupEntry(
                 val name: String,
@@ -350,83 +351,9 @@ class SetupWizard(
         }
     }
 
-    // ── Interactive module picker ─────────────────────────────
+    // ── Interactive pickers ───────────────────────────────────
 
-    /**
-     * Interactive arrow-key module picker for the setup wizard.
-     * ↑↓ to navigate, Space to toggle, Enter to confirm.
-     */
-    private fun pickModules(
-        terminal: Terminal,
-        w: PrintWriter,
-        modules: List<ModuleInfo>,
-        selected: MutableSet<String>
-    ) {
-        var cursor = 0
-        val rawWriter = terminal.writer()
-
-        val originalAttrs = terminal.enterRawMode()
-        val reader = terminal.reader()
-
-        try {
-            // Hide cursor
-            rawWriter.print("\u001B[?25l")
-            rawWriter.flush()
-
-            drawModulePicker(rawWriter, modules, selected, cursor)
-
-            while (true) {
-                val key = readPickerKey(reader)
-                when (key) {
-                    PickerKey.UP -> cursor = (cursor - 1 + modules.size) % modules.size
-                    PickerKey.DOWN -> cursor = (cursor + 1) % modules.size
-                    PickerKey.SPACE -> {
-                        val id = modules[cursor].id
-                        if (id in selected) selected.remove(id) else selected.add(id)
-                    }
-                    PickerKey.ENTER -> break
-                    else -> {}
-                }
-
-                clearModulePicker(rawWriter, modules.size)
-                drawModulePicker(rawWriter, modules, selected, cursor)
-            }
-
-            clearModulePicker(rawWriter, modules.size)
-            rawWriter.print("\u001B[?25h")
-            rawWriter.flush()
-        } finally {
-            terminal.setAttributes(originalAttrs)
-            rawWriter.print("\u001B[?25h")
-            rawWriter.flush()
-        }
-    }
-
-    private fun drawModulePicker(w: java.io.Writer, modules: List<ModuleInfo>, selected: Set<String>, cursor: Int) {
-        w.write("  ${ConsoleFormatter.hint("↑↓ navigate  ·  space toggle  ·  enter confirm")}\n")
-        for ((i, mod) in modules.withIndex()) {
-            val isSelected = mod.id in selected
-            val isCursor = i == cursor
-            val checkbox = if (isSelected) "${GREEN}✓$RESET" else "${ConsoleFormatter.DIM}○$RESET"
-            val pointer = if (isCursor) "${CYAN}›$RESET " else "  "
-            val nameColor = if (isCursor) CYAN else ""
-            val nameReset = if (isCursor) RESET else ""
-            w.write("    $pointer$checkbox  $nameColor${mod.name}$nameReset  ${ConsoleFormatter.DIM}${mod.description}$RESET\n")
-        }
-        w.flush()
-    }
-
-    private fun clearModulePicker(w: java.io.Writer, itemCount: Int) {
-        val lines = itemCount + 1 // items + header
-        for (i in 0 until lines) w.write("\u001B[A")
-        for (i in 0 until lines) {
-            w.write("\u001B[2K")
-            if (i < lines - 1) w.write("\u001B[B")
-        }
-        for (i in 0 until lines - 1) w.write("\u001B[A")
-        w.write("\r")
-        w.flush()
-    }
+    private data class PickerOption(val id: String, val label: String, val hint: String = "")
 
     private enum class PickerKey { UP, DOWN, SPACE, ENTER, OTHER }
 
@@ -447,6 +374,132 @@ class SetupWizard(
             }
             else -> PickerKey.OTHER
         }
+    }
+
+    private fun clearLines(w: java.io.Writer, count: Int) {
+        for (i in 0 until count) w.write("\u001B[A")
+        for (i in 0 until count) {
+            w.write("\u001B[2K")
+            if (i < count - 1) w.write("\u001B[B")
+        }
+        for (i in 0 until count - 1) w.write("\u001B[A")
+        w.write("\r")
+        w.flush()
+    }
+
+    /**
+     * Single-select picker: ↑↓ navigate, enter to confirm.
+     * Returns the selected option index.
+     */
+    private fun pickOne(terminal: Terminal, options: List<PickerOption>, default: Int = 0): Int {
+        var cursor = default
+        val w = terminal.writer()
+        val originalAttrs = terminal.enterRawMode()
+        val reader = terminal.reader()
+
+        try {
+            w.print("\u001B[?25l")
+            w.flush()
+
+            val lines = options.size + 1
+            drawSinglePicker(w, options, cursor)
+
+            while (true) {
+                val key = readPickerKey(reader)
+                when (key) {
+                    PickerKey.UP -> cursor = (cursor - 1 + options.size) % options.size
+                    PickerKey.DOWN -> cursor = (cursor + 1) % options.size
+                    PickerKey.ENTER, PickerKey.SPACE -> break
+                    else -> {}
+                }
+                clearLines(w, lines)
+                drawSinglePicker(w, options, cursor)
+            }
+
+            clearLines(w, lines)
+            w.print("\u001B[?25h")
+            w.flush()
+        } finally {
+            terminal.setAttributes(originalAttrs)
+            w.print("\u001B[?25h")
+            w.flush()
+        }
+
+        return cursor
+    }
+
+    private fun drawSinglePicker(w: java.io.Writer, options: List<PickerOption>, cursor: Int) {
+        w.write("  ${ConsoleFormatter.hint("↑↓ navigate  ·  enter select")}\n")
+        for ((i, opt) in options.withIndex()) {
+            val isCursor = i == cursor
+            val radio = if (isCursor) "${CYAN}●$RESET" else "${ConsoleFormatter.DIM}○$RESET"
+            val pointer = if (isCursor) "${CYAN}›$RESET " else "  "
+            val nameColor = if (isCursor) CYAN else ""
+            val nameReset = if (isCursor) RESET else ""
+            val hint = if (opt.hint.isNotEmpty()) "  ${ConsoleFormatter.DIM}${opt.hint}$RESET" else ""
+            w.write("    $pointer$radio  $nameColor${opt.label}$nameReset$hint\n")
+        }
+        w.flush()
+    }
+
+    /**
+     * Multi-select picker: ↑↓ navigate, space toggle, enter confirm.
+     * Modifies [selected] in place and returns it.
+     */
+    private fun pickMany(terminal: Terminal, options: List<PickerOption>, selected: MutableSet<String>): Set<String> {
+        var cursor = 0
+        val w = terminal.writer()
+        val originalAttrs = terminal.enterRawMode()
+        val reader = terminal.reader()
+
+        try {
+            w.print("\u001B[?25l")
+            w.flush()
+
+            val lines = options.size + 1
+            drawMultiPicker(w, options, selected, cursor)
+
+            while (true) {
+                val key = readPickerKey(reader)
+                when (key) {
+                    PickerKey.UP -> cursor = (cursor - 1 + options.size) % options.size
+                    PickerKey.DOWN -> cursor = (cursor + 1) % options.size
+                    PickerKey.SPACE -> {
+                        val id = options[cursor].id
+                        if (id in selected) selected.remove(id) else selected.add(id)
+                    }
+                    PickerKey.ENTER -> break
+                    else -> {}
+                }
+                clearLines(w, lines)
+                drawMultiPicker(w, options, selected, cursor)
+            }
+
+            clearLines(w, lines)
+            w.print("\u001B[?25h")
+            w.flush()
+        } finally {
+            terminal.setAttributes(originalAttrs)
+            w.print("\u001B[?25h")
+            w.flush()
+        }
+
+        return selected
+    }
+
+    private fun drawMultiPicker(w: java.io.Writer, options: List<PickerOption>, selected: Set<String>, cursor: Int) {
+        w.write("  ${ConsoleFormatter.hint("↑↓ navigate  ·  space toggle  ·  enter confirm")}\n")
+        for ((i, opt) in options.withIndex()) {
+            val isSelected = opt.id in selected
+            val isCursor = i == cursor
+            val checkbox = if (isSelected) "${GREEN}✓$RESET" else "${ConsoleFormatter.DIM}○$RESET"
+            val pointer = if (isCursor) "${CYAN}›$RESET " else "  "
+            val nameColor = if (isCursor) CYAN else ""
+            val nameReset = if (isCursor) RESET else ""
+            val hint = if (opt.hint.isNotEmpty()) "  ${ConsoleFormatter.DIM}${opt.hint}$RESET" else ""
+            w.write("    $pointer$checkbox  $nameColor${opt.label}$nameReset$hint\n")
+        }
+        w.flush()
     }
 
     // ── Module helpers ────────────────────────────────────────
@@ -524,11 +577,19 @@ class SetupWizard(
     }
 
     private fun promptSoftware(terminal: Terminal): ServerSoftware {
-        val answer = prompt(terminal, "  Server software", "paper",
-            candidates = listOf("paper", "pufferfish", "purpur"))
-        return when (answer.lowercase()) {
-            "pufferfish" -> ServerSoftware.PUFFERFISH
+        val w = terminal.writer()
+        w.println("  ${ConsoleFormatter.colorize("Server software:", ConsoleFormatter.BOLD)}")
+        val options = listOf(
+            PickerOption("paper", "Paper", "recommended, best plugin support"),
+            PickerOption("purpur", "Purpur", "Paper fork with extra gameplay config"),
+            PickerOption("pufferfish", "Pufferfish", "Paper fork optimized for large servers")
+        )
+        val index = pickOne(terminal, options)
+        val chosen = options[index]
+        done(w, chosen.label)
+        return when (chosen.id) {
             "purpur" -> ServerSoftware.PURPUR
+            "pufferfish" -> ServerSoftware.PUFFERFISH
             else -> ServerSoftware.PAPER
         }
     }
@@ -564,48 +625,44 @@ class SetupWizard(
     }
 
     private fun promptViaPlugins(terminal: Terminal, w: PrintWriter, version: String): List<ViaPlugin> {
-        val plugins = mutableListOf<ViaPlugin>()
-
         w.println()
         w.println("  ${ConsoleFormatter.colorize("Protocol support:", ConsoleFormatter.BOLD)}")
-        w.println("  ${ConsoleFormatter.hint("ViaVersion allows players with newer clients to join older servers.")}")
-        w.println("  ${ConsoleFormatter.hint("ViaBackwards allows players with older clients to join newer servers.")}")
-        w.println("  ${ConsoleFormatter.hint("ViaRewind extends backwards support to 1.7/1.8 clients.")}")
-        w.println()
 
         // Parse major.minor from version
         val parts = version.split(".")
-        val major = parts.getOrNull(0)?.toIntOrNull() ?: 1
         val minor = parts.getOrNull(1)?.toIntOrNull() ?: 21
-
-        // Suggest ViaVersion if not on latest
         val isLatest = (paperVersions?.latest ?: "1.21.4") == version
-        if (!isLatest) {
-            if (promptYesNo(terminal, "  Install ${CYAN}ViaVersion$RESET? ${ConsoleFormatter.hint("(newer clients can join)")}", true)) {
-                plugins.add(ViaPlugin.VIA_VERSION)
-            }
-        } else {
-            if (promptYesNo(terminal, "  Install ${CYAN}ViaVersion$RESET?", false)) {
-                plugins.add(ViaPlugin.VIA_VERSION)
-            }
+
+        val options = mutableListOf(
+            PickerOption("viaversion", "ViaVersion", "newer clients can join older servers"),
+            PickerOption("viabackwards", "ViaBackwards", "older clients can join newer servers")
+        )
+        if (minor >= 9) {
+            options.add(PickerOption("viarewind", "ViaRewind", "extends backwards support to 1.7/1.8"))
         }
 
-        // Suggest ViaBackwards
-        if (promptYesNo(terminal, "  Install ${CYAN}ViaBackwards$RESET? ${ConsoleFormatter.hint("(older clients can join)")}", minor >= 17)) {
-            plugins.add(ViaPlugin.VIA_BACKWARDS)
-            // ViaBackwards requires ViaVersion — auto-add if not already selected
-            if (ViaPlugin.VIA_VERSION !in plugins) {
-                plugins.add(0, ViaPlugin.VIA_VERSION)
-                w.println("  ${ConsoleFormatter.hint("→ ViaVersion auto-included (required by ViaBackwards)")}")
-            }
+        // Pre-select based on version
+        val preSelected = mutableSetOf<String>()
+        if (!isLatest) preSelected.add("viaversion")
+        if (minor >= 17) preSelected.add("viabackwards")
 
-            // ViaRewind only makes sense with ViaBackwards and for 1.9+ servers
-            if (minor >= 9) {
-                if (promptYesNo(terminal, "  Install ${CYAN}ViaRewind$RESET? ${ConsoleFormatter.hint("(extends support to 1.7/1.8)")}", false)) {
-                    plugins.add(ViaPlugin.VIA_REWIND)
-                }
-            }
+        pickMany(terminal, options, preSelected)
+
+        val plugins = mutableListOf<ViaPlugin>()
+
+        // Enforce dependency chain: ViaBackwards requires ViaVersion, ViaRewind requires ViaBackwards
+        if ("viarewind" in preSelected && "viabackwards" !in preSelected) {
+            preSelected.add("viabackwards")
+            w.println("  ${ConsoleFormatter.hint("→ ViaBackwards auto-included (required by ViaRewind)")}")
         }
+        if ("viabackwards" in preSelected && "viaversion" !in preSelected) {
+            preSelected.add("viaversion")
+            w.println("  ${ConsoleFormatter.hint("→ ViaVersion auto-included (required by ViaBackwards)")}")
+        }
+
+        if ("viaversion" in preSelected) plugins.add(ViaPlugin.VIA_VERSION)
+        if ("viabackwards" in preSelected) plugins.add(ViaPlugin.VIA_BACKWARDS)
+        if ("viarewind" in preSelected) plugins.add(ViaPlugin.VIA_REWIND)
 
         if (plugins.isNotEmpty()) {
             done(w, "Via plugins: ${plugins.joinToString(", ") { it.slug }}")
