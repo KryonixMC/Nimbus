@@ -3,8 +3,11 @@ package dev.kryonix.nimbus.setup
 import dev.kryonix.nimbus.config.ServerSoftware
 import dev.kryonix.nimbus.console.ConsoleFormatter
 import dev.kryonix.nimbus.console.ConsoleFormatter.CYAN
+import dev.kryonix.nimbus.console.ConsoleFormatter.GREEN
 import dev.kryonix.nimbus.console.ConsoleFormatter.RESET
 import dev.kryonix.nimbus.console.ConsoleFormatter.YELLOW
+import dev.kryonix.nimbus.module.ModuleManager
+import dev.kryonix.nimbus.module.ModuleInfo
 import dev.kryonix.nimbus.template.SoftwareResolver
 import dev.kryonix.nimbus.template.SoftwareResolver.ViaPlugin
 import org.jline.reader.Candidate
@@ -109,17 +112,50 @@ class SetupWizard(
             }
             w.println()
 
-            // --- Step 2.5b: Permissions Plugin ---
-            val permsEnabled = promptYesNo(terminal, "  Install built-in permissions plugin? ${ConsoleFormatter.hint("(prefix, suffix, groups, tracks)")}", true)
-            if (permsEnabled) {
-                done(w, "NimbusPerms will be deployed to all backend servers")
-            } else {
-                w.println("  ${ConsoleFormatter.hint("Skipped — you can use LuckPerms or install NimbusPerms later.")}")
-            }
-            w.println()
+            // --- Step 2.5b: Modules ---
+            val availableModules = discoverEmbeddedModules()
+            val selectedModules = mutableSetOf<String>()
 
-            // --- Step 3: Server Groups ---
-            stepHeader(w, 3, "Server Groups")
+            if (availableModules.isNotEmpty()) {
+                stepHeader(w, 3, "Modules")
+                w.println()
+                w.println("  ${ConsoleFormatter.hint("Choose which modules to install:")}")
+                w.println()
+
+                // Pre-select defaults
+                availableModules.filter { it.defaultEnabled }.forEach { selectedModules.add(it.id) }
+
+                for (mod in availableModules) {
+                    val selected = mod.id in selectedModules
+                    val icon = if (selected) "${GREEN}✓$RESET" else "${ConsoleFormatter.DIM}○$RESET"
+                    w.println("    $icon  ${CYAN}${mod.name}$RESET  ${ConsoleFormatter.hint(mod.description)}")
+                }
+                w.println()
+
+                for (mod in availableModules) {
+                    val isDefault = mod.id in selectedModules
+                    val install = promptYesNo(terminal, "  Install ${CYAN}${mod.name}$RESET?", isDefault)
+                    if (install) {
+                        selectedModules.add(mod.id)
+                    } else {
+                        selectedModules.remove(mod.id)
+                    }
+                }
+
+                val moduleCount = selectedModules.size
+                if (moduleCount > 0) {
+                    done(w, "$moduleCount module(s) selected")
+                } else {
+                    w.println("  ${ConsoleFormatter.hint("No modules selected — you can add them later to modules/")}")
+                }
+                w.println()
+            }
+
+            // Derive permsEnabled from module selection (controls deploy_plugin in nimbus.toml)
+            val permsEnabled = "perms" in selectedModules
+
+            // --- Step 4: Server Groups ---
+            stepHeader(w, 4, "Server Groups")
             w.println()
 
             w.println("  ${ConsoleFormatter.colorize("Choose a template:", ConsoleFormatter.BOLD)}")
@@ -203,8 +239,8 @@ class SetupWizard(
             }
             w.println()
 
-            // --- Step 4: Download ---
-            stepHeader(w, 4, "Downloading")
+            // --- Step 5: Download ---
+            stepHeader(w, 5, "Downloading")
             w.println()
 
             // Proxy
@@ -261,8 +297,8 @@ class SetupWizard(
             }
             w.println()
 
-            // --- Step 5: Write configs ---
-            stepHeader(w, 5, "Saving configuration")
+            // --- Step 6: Write configs ---
+            stepHeader(w, 6, "Saving configuration")
             w.println()
 
             writeNimbusToml(networkName, permsEnabled, bedrockEnabled)
@@ -276,18 +312,30 @@ class SetupWizard(
                 w.println("  ${ConsoleFormatter.colorize("+", ConsoleFormatter.GREEN)} config/groups/${group.name.lowercase()}.toml")
             }
 
+            // Extract selected module JARs to modules/
+            if (selectedModules.isNotEmpty()) {
+                val modulesOutputDir = baseDir.resolve("modules")
+                Files.createDirectories(modulesOutputDir)
+                for (mod in availableModules) {
+                    if (mod.id in selectedModules) {
+                        extractEmbeddedModule(mod.fileName, modulesOutputDir)
+                        w.println("  ${ConsoleFormatter.colorize("+", ConsoleFormatter.GREEN)} modules/${mod.fileName}")
+                    }
+                }
+            }
+
             w.println()
             w.println(ConsoleFormatter.separator(40))
             w.println("  ${ConsoleFormatter.successLine("Setup complete!")} ${ConsoleFormatter.hint("${groups.size + 1} group(s) configured.")}")
             w.println(ConsoleFormatter.separator(40))
             w.println()
 
-            // --- Step 6: Start script (skip if already exists, e.g. from installer) ---
+            // --- Step 7: Start script (skip if already exists, e.g. from installer) ---
             val startScriptName = if (detectedOs == OperatingSystem.WINDOWS) "start.bat" else "start.sh"
             val startScriptExists = baseDir.resolve(startScriptName).exists()
 
             if (detectedOs != OperatingSystem.UNKNOWN && !startScriptExists) {
-                stepHeader(w, 6, "Start Script")
+                stepHeader(w, 7, "Start Script")
                 w.println()
 
                 if (detectedOs == OperatingSystem.WINDOWS) {
@@ -316,6 +364,48 @@ class SetupWizard(
         } finally {
             terminal?.close()
         }
+    }
+
+    // ── Module helpers ────────────────────────────────────────
+
+    /**
+     * Discovers module JARs embedded in the application JAR under `controller-modules/`.
+     * Reads each JAR's `module.properties` to get metadata without loading classes.
+     */
+    private fun discoverEmbeddedModules(): List<ModuleInfo> {
+        val modules = mutableListOf<ModuleInfo>()
+        val resourceNames = listOf(
+            "nimbus-module-perms.jar",
+            "nimbus-module-display.jar",
+            "nimbus-module-refinery.jar"
+        )
+
+        for (name in resourceNames) {
+            val resource = javaClass.classLoader.getResourceAsStream("controller-modules/$name") ?: continue
+            try {
+                // Write to temp file so we can read it as a JarFile
+                val tempFile = Files.createTempFile("nimbus-module-", ".jar")
+                resource.use { input -> Files.copy(input, tempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+                val info = ModuleManager.readModuleProperties(tempFile)
+                if (info != null) {
+                    modules.add(info.copy(fileName = name))
+                }
+                Files.deleteIfExists(tempFile)
+            } catch (e: Exception) {
+                logger.debug("Failed to read module properties from {}: {}", name, e.message)
+            }
+        }
+
+        return modules
+    }
+
+    /**
+     * Extracts an embedded module JAR from application resources to the target directory.
+     */
+    private fun extractEmbeddedModule(fileName: String, targetDir: Path) {
+        val resource = javaClass.classLoader.getResourceAsStream("controller-modules/$fileName") ?: return
+        val target = targetDir.resolve(fileName)
+        resource.use { input -> Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
     }
 
     // ── Prompt helpers ──────────────────────────────────────────

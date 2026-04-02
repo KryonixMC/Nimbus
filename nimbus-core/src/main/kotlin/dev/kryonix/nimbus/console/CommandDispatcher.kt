@@ -2,20 +2,20 @@ package dev.kryonix.nimbus.console
 
 import dev.kryonix.nimbus.console.commands.ShutdownCommand
 import dev.kryonix.nimbus.group.GroupManager
+import dev.kryonix.nimbus.module.ModuleCommand
 import dev.kryonix.nimbus.service.ServiceRegistry
 import org.slf4j.LoggerFactory
 
-interface Command {
-    val name: String
-    val description: String
-    val usage: String
-    suspend fun execute(args: List<String>)
-}
+/**
+ * Core command interface. Extends [ModuleCommand] so module commands
+ * are fully compatible with the command system.
+ */
+interface Command : ModuleCommand
 
 class CommandDispatcher {
 
     private val logger = LoggerFactory.getLogger(CommandDispatcher::class.java)
-    private val commands = linkedMapOf<String, Command>()
+    private val commands = linkedMapOf<String, ModuleCommand>()
 
     // Set externally for contextual tab completion
     var registry: ServiceRegistry? = null
@@ -26,9 +26,16 @@ class CommandDispatcher {
     // Commands that take a group name as first arg
     private val groupArgCommands = setOf("start", "info", "dynamic")
 
-    fun register(command: Command) {
+    fun register(command: ModuleCommand) {
         commands[command.name.lowercase()] = command
         logger.debug("Registered command: {}", command.name)
+    }
+
+    fun unregister(name: String) {
+        val removed = commands.remove(name.lowercase())
+        if (removed != null) {
+            logger.debug("Unregistered command: {}", name)
+        }
     }
 
     /**
@@ -65,9 +72,9 @@ class CommandDispatcher {
         return true
     }
 
-    fun getCommands(): List<Command> = commands.values.toList()
+    fun getCommands(): List<ModuleCommand> = commands.values.toList()
 
-    fun getCommand(name: String): Command? = commands[name.lowercase()]
+    fun getCommand(name: String): ModuleCommand? = commands[name.lowercase()]
 
     /**
      * Provides tab-completion candidates for the given input buffer.

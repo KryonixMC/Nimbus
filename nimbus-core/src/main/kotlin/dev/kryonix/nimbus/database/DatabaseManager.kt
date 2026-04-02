@@ -15,7 +15,8 @@ import kotlin.io.path.exists
 class DatabaseManager(private val baseDir: Path, private val config: DatabaseConfig) {
 
     private val logger = LoggerFactory.getLogger(DatabaseManager::class.java)
-    private lateinit var database: Database
+    lateinit var database: Database
+        private set
 
     fun init() {
         database = when (config.type.lowercase()) {
