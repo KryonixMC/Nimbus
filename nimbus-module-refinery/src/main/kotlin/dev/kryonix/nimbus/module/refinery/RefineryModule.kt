@@ -12,7 +12,7 @@ class RefineryModule : NimbusModule {
     override val id = "refinery"
     override val name = "Refinery"
     override val version: String get() = NimbusVersion.version
-    override val description = "Game framework integration (telemetry, auto-scaling)"
+    override val description = "Refinery game engine integration — telemetry, auto-scaling hints, crash reports"
 
     private lateinit var integration: RefineryIntegration
 

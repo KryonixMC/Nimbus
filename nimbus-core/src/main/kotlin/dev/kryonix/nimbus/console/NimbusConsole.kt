@@ -128,7 +128,7 @@ class NimbusConsole(
             dispatcher.register(StressCommand(stressTestManager, registry, groupManager))
         }
         if (moduleManager != null) {
-            dispatcher.register(ModulesCommand(moduleManager))
+            dispatcher.register(ModulesCommand(moduleManager, terminal))
         }
         dispatcher.register(ClearCommand(terminal))
         dispatcher.register(ShutdownCommand(serviceManager, registry))

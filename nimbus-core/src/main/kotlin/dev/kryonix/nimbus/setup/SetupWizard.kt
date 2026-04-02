@@ -119,34 +119,18 @@ class SetupWizard(
             if (availableModules.isNotEmpty()) {
                 stepHeader(w, 3, "Modules")
                 w.println()
-                w.println("  ${ConsoleFormatter.hint("Choose which modules to install:")}")
-                w.println()
 
                 // Pre-select defaults
                 availableModules.filter { it.defaultEnabled }.forEach { selectedModules.add(it.id) }
 
-                for (mod in availableModules) {
-                    val selected = mod.id in selectedModules
-                    val icon = if (selected) "${GREEN}✓$RESET" else "${ConsoleFormatter.DIM}○$RESET"
-                    w.println("    $icon  ${CYAN}${mod.name}$RESET  ${ConsoleFormatter.hint(mod.description)}")
-                }
-                w.println()
-
-                for (mod in availableModules) {
-                    val isDefault = mod.id in selectedModules
-                    val install = promptYesNo(terminal, "  Install ${CYAN}${mod.name}$RESET?", isDefault)
-                    if (install) {
-                        selectedModules.add(mod.id)
-                    } else {
-                        selectedModules.remove(mod.id)
-                    }
-                }
+                // Interactive picker
+                pickModules(terminal, w, availableModules, selectedModules)
 
                 val moduleCount = selectedModules.size
                 if (moduleCount > 0) {
                     done(w, "$moduleCount module(s) selected")
                 } else {
-                    w.println("  ${ConsoleFormatter.hint("No modules selected — you can add them later to modules/")}")
+                    w.println("  ${ConsoleFormatter.hint("No modules selected — you can add them later with: modules install")}")
                 }
                 w.println()
             }
@@ -363,6 +347,105 @@ class SetupWizard(
             return false
         } finally {
             terminal?.close()
+        }
+    }
+
+    // ── Interactive module picker ─────────────────────────────
+
+    /**
+     * Interactive arrow-key module picker for the setup wizard.
+     * ↑↓ to navigate, Space to toggle, Enter to confirm.
+     */
+    private fun pickModules(
+        terminal: Terminal,
+        w: PrintWriter,
+        modules: List<ModuleInfo>,
+        selected: MutableSet<String>
+    ) {
+        var cursor = 0
+        val rawWriter = terminal.writer()
+
+        val originalAttrs = terminal.enterRawMode()
+        val reader = terminal.reader()
+
+        try {
+            // Hide cursor
+            rawWriter.print("\u001B[?25l")
+            rawWriter.flush()
+
+            drawModulePicker(rawWriter, modules, selected, cursor)
+
+            while (true) {
+                val key = readPickerKey(reader)
+                when (key) {
+                    PickerKey.UP -> cursor = (cursor - 1 + modules.size) % modules.size
+                    PickerKey.DOWN -> cursor = (cursor + 1) % modules.size
+                    PickerKey.SPACE -> {
+                        val id = modules[cursor].id
+                        if (id in selected) selected.remove(id) else selected.add(id)
+                    }
+                    PickerKey.ENTER -> break
+                    else -> {}
+                }
+
+                clearModulePicker(rawWriter, modules.size)
+                drawModulePicker(rawWriter, modules, selected, cursor)
+            }
+
+            clearModulePicker(rawWriter, modules.size)
+            rawWriter.print("\u001B[?25h")
+            rawWriter.flush()
+        } finally {
+            terminal.setAttributes(originalAttrs)
+            rawWriter.print("\u001B[?25h")
+            rawWriter.flush()
+        }
+    }
+
+    private fun drawModulePicker(w: java.io.Writer, modules: List<ModuleInfo>, selected: Set<String>, cursor: Int) {
+        w.write("  ${ConsoleFormatter.hint("↑↓ navigate  ·  space toggle  ·  enter confirm")}\n")
+        for ((i, mod) in modules.withIndex()) {
+            val isSelected = mod.id in selected
+            val isCursor = i == cursor
+            val checkbox = if (isSelected) "${GREEN}✓$RESET" else "${ConsoleFormatter.DIM}○$RESET"
+            val pointer = if (isCursor) "${CYAN}›$RESET " else "  "
+            val nameColor = if (isCursor) CYAN else ""
+            val nameReset = if (isCursor) RESET else ""
+            w.write("    $pointer$checkbox  $nameColor${mod.name}$nameReset  ${ConsoleFormatter.DIM}${mod.description}$RESET\n")
+        }
+        w.flush()
+    }
+
+    private fun clearModulePicker(w: java.io.Writer, itemCount: Int) {
+        val lines = itemCount + 1 // items + header
+        for (i in 0 until lines) w.write("\u001B[A")
+        for (i in 0 until lines) {
+            w.write("\u001B[2K")
+            if (i < lines - 1) w.write("\u001B[B")
+        }
+        for (i in 0 until lines - 1) w.write("\u001B[A")
+        w.write("\r")
+        w.flush()
+    }
+
+    private enum class PickerKey { UP, DOWN, SPACE, ENTER, OTHER }
+
+    private fun readPickerKey(reader: org.jline.utils.NonBlockingReader): PickerKey {
+        val c = reader.read()
+        return when (c) {
+            13, 10 -> PickerKey.ENTER
+            32 -> PickerKey.SPACE
+            27 -> {
+                val next = reader.peek(50)
+                if (next == -2 || next == -1) return PickerKey.OTHER
+                reader.read() // consume '['
+                when (reader.read()) {
+                    65 -> PickerKey.UP    // ESC[A
+                    66 -> PickerKey.DOWN  // ESC[B
+                    else -> PickerKey.OTHER
+                }
+            }
+            else -> PickerKey.OTHER
         }
     }
 
