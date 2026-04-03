@@ -446,8 +446,7 @@ class SetupWizard(
         val modules = mutableListOf<ModuleInfo>()
         val resourceNames = listOf(
             "nimbus-module-perms.jar",
-            "nimbus-module-display.jar",
-            "nimbus-module-refinery.jar"
+            "nimbus-module-display.jar"
         )
 
         for (name in resourceNames) {

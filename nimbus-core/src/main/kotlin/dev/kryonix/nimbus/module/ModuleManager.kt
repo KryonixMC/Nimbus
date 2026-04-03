@@ -242,8 +242,7 @@ class ModuleManager(
     companion object {
         private val EMBEDDED_MODULES = listOf(
             "nimbus-module-perms.jar",
-            "nimbus-module-display.jar",
-            "nimbus-module-refinery.jar"
+            "nimbus-module-display.jar"
         )
 
         fun readModuleProperties(jarPath: Path): ModuleInfo? {

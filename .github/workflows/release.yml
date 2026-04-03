@@ -62,7 +62,7 @@ jobs:
           cp "$AGENT_JAR" "nimbus-agent-${VERSION}.jar"
 
           # Module JARs (standalone, for manual install)
-          for mod in perms display refinery; do
+          for mod in perms display; do
             MOD_JAR=$(find "nimbus-module-${mod}/build/libs" -name "*.jar" ! -name "*-sources*" | head -1)
             if [ -n "$MOD_JAR" ]; then
               cp "$MOD_JAR" "nimbus-module-${mod}-${VERSION}.jar"
@@ -86,7 +86,6 @@ jobs:
             nimbus-agent-${{ steps.version.outputs.version }}.jar
             nimbus-module-perms-${{ steps.version.outputs.version }}.jar
             nimbus-module-display-${{ steps.version.outputs.version }}.jar
-            nimbus-module-refinery-${{ steps.version.outputs.version }}.jar
           body: |
             ## Nimbus ${{ steps.version.outputs.tag }}
 

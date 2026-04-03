@@ -150,7 +150,6 @@ class NimbusConsole(
                 if (event is NimbusEvent.PlayerDisconnected && event.playerName.startsWith("StressBot-")) return@collect
                 if (event is NimbusEvent.StressTestUpdated) return@collect
                 if (event is NimbusEvent.MotdUpdated && stressTestManager?.isActive() == true) return@collect
-                if (event is NimbusEvent.ServiceMessage && event.channel == "refinery:telemetry") return@collect
 
                 val formatted = ConsoleFormatter.formatEvent(event)
                 if (eventsPaused) {

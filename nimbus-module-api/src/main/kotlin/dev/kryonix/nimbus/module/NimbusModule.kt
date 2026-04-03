@@ -10,7 +10,7 @@ package dev.kryonix.nimbus.module
  */
 interface NimbusModule {
 
-    /** Unique identifier, e.g. "perms", "display", "refinery" */
+    /** Unique identifier, e.g. "perms", "display" */
     val id: String
 
     /** Human-readable name, e.g. "Permissions" */

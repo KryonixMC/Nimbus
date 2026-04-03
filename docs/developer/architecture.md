@@ -87,9 +87,6 @@ nimbus-module-display (Display Module)
 ├── DisplayManager, DisplayConfig
 └── DisplayRoutes
 
-nimbus-module-refinery (Refinery Module)
-├── RefineryIntegration, RefineryTelemetryStore
-└── RefineryCommand
 ```
 
 ## Bootstrap flow

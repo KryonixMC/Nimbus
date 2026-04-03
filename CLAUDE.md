@@ -30,7 +30,7 @@ Install scripts: `install.sh`, `install.ps1`, `install-agent.sh`, `install-agent
 java -jar nimbus-core/build/libs/nimbus-core-<version>-all.jar
 ```
 
-`shadowJar` also builds and embeds module JARs (perms, display, refinery) into `controller-modules/` inside the fat JAR.
+`shadowJar` also builds and embeds module JARs (perms, display) into `controller-modules/` inside the fat JAR.
 
 Version is defined once in `gradle.properties` (`nimbusVersion=x.y.z`).
 
@@ -63,7 +63,6 @@ Version is defined once in `gradle.properties` (`nimbusVersion=x.y.z`).
 - `nimbus-module-api` — Module API: interfaces for external module developers (NimbusModule, ModuleContext, ModuleCommand)
 - `nimbus-module-perms` — Permissions module: groups, tracks, prefix/suffix, audit log (extracted from core)
 - `nimbus-module-display` — Display module: server selector signs + NPCs config (extracted from core)
-- `nimbus-module-refinery` — Refinery module: game framework integration, telemetry, auto-scaling (extracted from core)
 
 ## Tech Stack
 
@@ -96,7 +95,7 @@ nimbus-core/src/main/kotlin/dev/kryonix/nimbus/
 ├── template/              # TemplateManager, ConfigPatcher, SoftwareResolver (auto-download)
 ├── update/                # UpdateChecker (GitHub Releases auto-updater)
 └── velocity/              # VelocityConfigGen (auto-manage proxy server list)
-# Note: permissions, display, refinery code now lives in their respective module JARs
+# Note: permissions, display code now lives in their respective module JARs
 ```
 
 ## Configuration

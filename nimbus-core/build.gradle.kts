@@ -147,10 +147,6 @@ tasks.shadowJar {
         into("controller-modules")
         rename { "nimbus-module-display.jar" }
     }
-    from(project(":nimbus-module-refinery").tasks.named("jar").map { (it as Jar).archiveFile }) {
-        into("controller-modules")
-        rename { "nimbus-module-refinery.jar" }
-    }
 }
 
 kotlin {
