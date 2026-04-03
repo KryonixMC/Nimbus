@@ -40,7 +40,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             VERSION="${{ inputs.version }}"
           else
-            VERSION=$(grep 'nimbusVersion=' gradle.properties | cut -d'=' -f2)
+            VERSION=$(grep 'nimbusVersion=' gradle.properties | cut -d'=' -f2 | tr -d '\r\n')
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
