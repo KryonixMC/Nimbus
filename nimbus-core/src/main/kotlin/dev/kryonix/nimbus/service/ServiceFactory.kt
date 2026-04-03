@@ -8,6 +8,7 @@ import dev.kryonix.nimbus.event.NimbusEvent
 import dev.kryonix.nimbus.group.GroupManager
 import dev.kryonix.nimbus.template.ConfigPatcher
 import dev.kryonix.nimbus.template.GeyserConfigGen
+import dev.kryonix.nimbus.module.ModuleManager
 import dev.kryonix.nimbus.template.PerformanceOptimizer
 import dev.kryonix.nimbus.template.SoftwareResolver
 import dev.kryonix.nimbus.template.TemplateManager
@@ -15,7 +16,9 @@ import dev.kryonix.nimbus.velocity.VelocityConfigGen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
@@ -33,7 +36,8 @@ class ServiceFactory(
     private val softwareResolver: SoftwareResolver,
     private val compatibilityChecker: CompatibilityChecker,
     private val eventBus: EventBus,
-    private val velocityConfigGen: VelocityConfigGen
+    private val velocityConfigGen: VelocityConfigGen,
+    private val moduleManager: ModuleManager? = null
 ) {
 
     private val logger = LoggerFactory.getLogger(ServiceFactory::class.java)
@@ -165,13 +169,16 @@ class ServiceFactory(
             )
 
             // Apply global templates (always overwrite, even for static services)
-            val isVanillaBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA, ServerSoftware.VELOCITY)
-            if (isVanillaBased) {
+            val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA)
+            if (isPaperBased) {
                 templateManager.applyGlobalTemplate(templatesDir.resolve("global"), workDir)
             }
             if (software == ServerSoftware.VELOCITY) {
                 templateManager.applyGlobalTemplate(templatesDir.resolve("global_proxy"), workDir)
             }
+
+            // Deploy module-dependent plugins based on active modules and software compatibility
+            resolveModulePlugins(software, group.config.group.version, workDir, serviceName)
 
             val forwardingMode = compatibilityChecker.determineForwardingMode()
             when (software) {
@@ -302,6 +309,51 @@ class ServiceFactory(
             service.bedrockPort?.let { portAllocator.releaseBedrockPort(it) }
             registry.unregister(serviceName)
             null
+        }
+    }
+
+    /**
+     * Deploys module-dependent plugins to a service's working directory based on
+     * which controller modules are active and the service's software compatibility.
+     */
+    private suspend fun resolveModulePlugins(software: ServerSoftware, version: String, workDir: Path, serviceName: String) {
+        if (moduleManager == null || software == ServerSoftware.VELOCITY) return
+
+        val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PURPUR, ServerSoftware.PUFFERFISH, ServerSoftware.FOLIA)
+        if (!isPaperBased) return
+
+        val pluginsDir = workDir.resolve("plugins")
+        if (!pluginsDir.exists()) pluginsDir.createDirectories()
+
+        val minor = version.split(".").getOrNull(1)?.toIntOrNull() ?: 0
+
+        // Perms module → deploy nimbus-perms.jar (respects deploy_plugin config as opt-out)
+        if (moduleManager.isLoaded("perms") && config.permissions.deployPlugin) {
+            deployResourcePlugin(pluginsDir, "nimbus-perms.jar", "plugins/nimbus-perms.jar")
+
+            // Folia needs PacketEvents for packet-based name tags (Scoreboard API is read-only)
+            if (software == ServerSoftware.FOLIA) {
+                softwareResolver.ensurePacketEventsPlugin(pluginsDir, version)
+            }
+        }
+
+        // Display module → deploy nimbus-display.jar + FancyNpcs (if version compatible)
+        if (moduleManager.isLoaded("display")) {
+            deployResourcePlugin(pluginsDir, "nimbus-display.jar", "plugins/nimbus-display.jar")
+
+            if (minor >= 20) {
+                deployResourcePlugin(pluginsDir, "FancyNpcs.jar", "plugins/FancyNpcs.jar")
+            } else {
+                logger.info("Service '{}': FancyNpcs skipped (requires 1.20+, got {})", serviceName, version)
+            }
+        }
+    }
+
+    private fun deployResourcePlugin(pluginsDir: Path, fileName: String, resourcePath: String) {
+        val target = pluginsDir.resolve(fileName)
+        val resource = javaClass.classLoader.getResourceAsStream(resourcePath) ?: return
+        resource.use { input ->
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
         }
     }
 

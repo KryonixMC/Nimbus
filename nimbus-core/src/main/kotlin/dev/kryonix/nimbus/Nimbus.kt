@@ -269,7 +269,8 @@ fun nimbusMain() = runBlocking {
         eventBus = eventBus,
         scope = scope,
         softwareResolver = softwareResolver,
-        nodeManager = nodeManager
+        nodeManager = nodeManager,
+        moduleManager = moduleManager
     )
 
     // Start scaling engine
