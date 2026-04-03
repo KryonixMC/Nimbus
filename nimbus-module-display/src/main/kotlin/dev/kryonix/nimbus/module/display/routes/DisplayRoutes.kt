@@ -1,13 +1,14 @@
 package dev.kryonix.nimbus.module.display.routes
 
 import dev.kryonix.nimbus.api.*
-import dev.kryonix.nimbus.module.display.DisplayConfig
-import dev.kryonix.nimbus.module.display.DisplayManager
+import dev.kryonix.nimbus.group.GroupManager
+import dev.kryonix.nimbus.module.display.*
 import io.ktor.http.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Route.displayRoutes(displayManager: DisplayManager) {
+fun Route.displayRoutes(displayManager: DisplayManager, groupManager: GroupManager) {
 
     route("/api/displays") {
 
@@ -23,6 +24,51 @@ fun Route.displayRoutes(displayManager: DisplayManager) {
             val display = displayManager.getDisplay(name)
                 ?: return@get call.respond(HttpStatusCode.NotFound, ApiMessage(false, "No display config for '$name'"))
             call.respond(display.toResponse())
+        }
+
+        // PUT /api/displays/{name} — Update display config (partial)
+        put("{name}") {
+            val name = call.parameters["name"]!!
+            if (displayManager.getDisplay(name) == null) {
+                return@put call.respond(HttpStatusCode.NotFound, ApiMessage(false, "No display config for '$name'"))
+            }
+
+            val req = call.receive<UpdateDisplayRequest>()
+            val update = DisplayUpdate(
+                sign = req.sign?.let { SignUpdate(it.line1, it.line2, it.line3, it.line4Online, it.line4Offline) },
+                npc = req.npc?.let { n ->
+                    NpcUpdate(
+                        displayName = n.displayName,
+                        subtitle = n.subtitle,
+                        subtitleOffline = n.subtitleOffline,
+                        floatingItem = n.floatingItem,
+                        statusItems = n.statusItems,
+                        inventory = n.inventory?.let { inv ->
+                            NpcInventoryUpdate(inv.title, inv.size, inv.itemName, inv.itemLore)
+                        }
+                    )
+                },
+                states = req.states
+            )
+
+            if (displayManager.updateDisplay(name, update)) {
+                call.respond(displayManager.getDisplay(name)!!.toResponse())
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, ApiMessage(false, "Failed to update display config"))
+            }
+        }
+
+        // POST /api/displays/{name}/reset — Reset display config to defaults
+        post("{name}/reset") {
+            val name = call.parameters["name"]!!
+            val group = groupManager.getGroup(name)
+                ?: return@post call.respond(HttpStatusCode.NotFound, ApiMessage(false, "No group '$name'"))
+
+            if (displayManager.resetDisplay(name, group.config)) {
+                call.respond(displayManager.getDisplay(name)!!.toResponse())
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, ApiMessage(false, "Failed to reset display config"))
+            }
         }
 
         // GET /api/displays/{name}/state/{state} — Resolve a state label

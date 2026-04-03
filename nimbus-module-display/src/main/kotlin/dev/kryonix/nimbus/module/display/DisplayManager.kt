@@ -123,6 +123,64 @@ class DisplayManager(private val displaysDir: Path) {
     }
 
     /**
+     * Update a display config with partial data.
+     * Merges the provided fields into the existing config and writes to disk.
+     */
+    fun updateDisplay(groupName: String, update: DisplayUpdate): Boolean {
+        val existing = displays[groupName] ?: return false
+        val def = existing.display
+
+        val newSign = if (update.sign != null) SignDisplay(
+            line1 = update.sign.line1 ?: def.sign.line1,
+            line2 = update.sign.line2 ?: def.sign.line2,
+            line3 = update.sign.line3 ?: def.sign.line3,
+            line4Online = update.sign.line4Online ?: def.sign.line4Online,
+            line4Offline = update.sign.line4Offline ?: def.sign.line4Offline
+        ) else def.sign
+
+        val newNpc = if (update.npc != null) NpcDisplay(
+            displayName = update.npc.displayName ?: def.npc.displayName,
+            subtitle = update.npc.subtitle ?: def.npc.subtitle,
+            subtitleOffline = update.npc.subtitleOffline ?: def.npc.subtitleOffline,
+            floatingItem = update.npc.floatingItem ?: def.npc.floatingItem,
+            statusItems = update.npc.statusItems ?: def.npc.statusItems,
+            inventory = if (update.npc.inventory != null) NpcInventoryConfig(
+                title = update.npc.inventory.title ?: def.npc.inventory.title,
+                size = update.npc.inventory.size ?: def.npc.inventory.size,
+                itemName = update.npc.inventory.itemName ?: def.npc.inventory.itemName,
+                itemLore = update.npc.inventory.itemLore ?: def.npc.inventory.itemLore
+            ) else def.npc.inventory
+        ) else def.npc
+
+        val newStates = update.states ?: def.states
+
+        val newConfig = DisplayConfig(DisplayDefinition(groupName, newSign, newNpc, newStates))
+        displays[groupName] = newConfig
+        writeDisplayToml(groupName, newConfig)
+        logger.info("Updated display config for '{}'", groupName)
+        return true
+    }
+
+    /**
+     * Reset a display config to defaults.
+     * Deletes the existing file and regenerates from the group config.
+     */
+    fun resetDisplay(groupName: String, groupConfig: dev.kryonix.nimbus.config.GroupConfig): Boolean {
+        val file = displaysDir.resolve("${groupName}.toml")
+        if (file.exists()) Files.delete(file)
+        generateDefault(file, groupConfig)
+        try {
+            val config = parseDisplayConfig(file)
+            displays[config.display.name] = config
+        } catch (e: Exception) {
+            logger.warn("Failed to reload display config after reset for '{}': {}", groupName, e.message)
+            return false
+        }
+        logger.info("Reset display config for '{}' to defaults", groupName)
+        return true
+    }
+
+    /**
      * Resolve a state label for display.
      * Falls back to the raw state if no label is configured.
      */
@@ -228,6 +286,51 @@ class DisplayManager(private val displaysDir: Path) {
             lower.contains("party") -> "CAKE"
             else -> "GRASS_BLOCK"
         }
+    }
+
+    // ── TOML Writing ──────────────────────────────────────────────────
+
+    private fun writeDisplayToml(groupName: String, config: DisplayConfig) {
+        val d = config.display
+        val s = d.sign
+        val n = d.npc
+        val inv = n.inventory
+        val statusItemsToml = n.statusItems.entries.joinToString("\n") { """"${it.key}" = "${it.value}"""" }
+        val stateToml = d.states.entries.joinToString("\n") { """${it.key} = "${it.value}"""" }
+        val loreToml = inv.itemLore.joinToString(", ") { """"$it"""" }
+        val toml = """
+            |# ⛅ Nimbus — Display Config for $groupName
+            |
+            |[display]
+            |name = "$groupName"
+            |
+            |[display.sign]
+            |line1 = "${s.line1}"
+            |line2 = "${s.line2}"
+            |line3 = "${s.line3}"
+            |line4_online = "${s.line4Online}"
+            |line4_offline = "${s.line4Offline}"
+            |
+            |[display.npc]
+            |display_name = "${n.displayName}"
+            |subtitle = "${n.subtitle}"
+            |subtitle_offline = "${n.subtitleOffline}"
+            |floating_item = "${n.floatingItem}"
+            |
+            |[display.npc.status_items]
+            |$statusItemsToml
+            |
+            |[display.npc.inventory]
+            |title = "${inv.title}"
+            |size = ${inv.size}
+            |item_name = "${inv.itemName}"
+            |item_lore = [$loreToml]
+            |
+            |[display.states]
+            |$stateToml
+        """.trimMargin()
+
+        displaysDir.resolve("${groupName}.toml").writeText(toml + "\n")
     }
 
     // ── TOML Parsing ──────────────────────────────────────────────────

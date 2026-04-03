@@ -47,7 +47,7 @@ class DisplayModule : NimbusModule {
             displayManager.deleteDisplay(event.groupName)
         }
 
-        context.registerRoutes({ displayRoutes(displayManager) })
+        context.registerRoutes({ displayRoutes(displayManager, groupManager) })
     }
 
     override suspend fun enable() {}

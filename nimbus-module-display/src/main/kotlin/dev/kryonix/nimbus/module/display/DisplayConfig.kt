@@ -68,6 +68,38 @@ fun defaultStateLabels(): Map<String, String> = mapOf(
     "ENDING" to "ENDING"
 )
 
+// ── Partial update DTOs (nullable fields = "not provided") ──────────
+
+data class DisplayUpdate(
+    val sign: SignUpdate? = null,
+    val npc: NpcUpdate? = null,
+    val states: Map<String, String>? = null
+)
+
+data class SignUpdate(
+    val line1: String? = null,
+    val line2: String? = null,
+    val line3: String? = null,
+    val line4Online: String? = null,
+    val line4Offline: String? = null
+)
+
+data class NpcUpdate(
+    val displayName: String? = null,
+    val subtitle: String? = null,
+    val subtitleOffline: String? = null,
+    val floatingItem: String? = null,
+    val statusItems: Map<String, String>? = null,
+    val inventory: NpcInventoryUpdate? = null
+)
+
+data class NpcInventoryUpdate(
+    val title: String? = null,
+    val size: Int? = null,
+    val itemName: String? = null,
+    val itemLore: List<String>? = null
+)
+
 fun defaultStatusItems(): Map<String, String> = mapOf(
     "ONLINE" to "LIME_WOOL",
     "STARTING" to "YELLOW_WOOL",
