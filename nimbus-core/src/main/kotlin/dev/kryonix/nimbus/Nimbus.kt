@@ -272,6 +272,9 @@ fun nimbusMain() = runBlocking {
         moduleContext = moduleContext
     )
 
+    // Expose ServiceManager to modules (created after module loading, accessed lazily)
+    moduleContext.registerService(ServiceManager::class.java, serviceManager)
+
     // Start scaling engine
     val scalingEngine = ScalingEngine(
         registry = registry,
