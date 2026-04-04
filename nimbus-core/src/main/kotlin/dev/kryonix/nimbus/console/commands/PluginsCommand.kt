@@ -413,11 +413,12 @@ class PluginsCommand(
         val searchClient = PluginSearchClient(softwareResolver.client)
         val initialQuery = if (args.size > 1) args.drop(1).joinToString(" ") else ""
 
-        // Live search
-        val selected = LiveSearchPicker.liveSearch(
+        // Live search with multi-select (space to toggle, enter to confirm)
+        val selectedPlugins = LiveSearchPicker.liveSearchMulti(
             terminal = terminal,
             title = "Search plugins ${DIM}($mcVersion)${RESET}",
             initialQuery = initialQuery,
+            identify = { it.slug },
             search = { query -> searchClient.search(query, mcVersion) },
             render = { result ->
                 val tag = when (result.source) {
@@ -434,62 +435,86 @@ class PluginsCommand(
             }
         )
 
-        if (selected == null) {
+        if (selectedPlugins.isNullOrEmpty()) {
             println("${DIM}Cancelled.$RESET")
             return
         }
 
-        // Fetch version details + dependencies
-        println("${DIM}Fetching version info for ${selected.name}...$RESET")
-        val version = searchClient.fetchVersion(selected, mcVersion)
-        if (version == null) {
-            println(ConsoleFormatter.error("No compatible version found for ${selected.name} on $mcVersion"))
-            return
-        }
-
-        // Show details
+        // Fetch version details for all selected plugins
         println()
-        println("  ${BOLD}${selected.name}${RESET} ${DIM}v${version.versionName}${RESET}")
-        println("  ${DIM}by ${selected.author} · ${formatDownloads(selected.downloads)} downloads${RESET}")
-        if (version.fileSize > 0) {
-            println("  ${DIM}File: ${version.fileName} (${PluginSearchClient.formatSize(version.fileSize)} MB)${RESET}")
-        }
+        data class ResolvedPlugin(
+            val result: PluginSearchClient.PluginSearchResult,
+            val version: PluginSearchClient.PluginVersionInfo
+        )
 
-        val requiredDeps = version.dependencies.filter { it.required }
-        if (requiredDeps.isNotEmpty()) {
-            println("  ${YELLOW}Dependencies:${RESET}")
-            for (dep in requiredDeps) {
-                println("    ${DIM}●${RESET} ${dep.name} ${DIM}(required)${RESET}")
+        val resolved = mutableListOf<ResolvedPlugin>()
+        for (plugin in selectedPlugins) {
+            print("  ${DIM}Fetching ${plugin.name}...$RESET")
+            val version = searchClient.fetchVersion(plugin, mcVersion)
+            if (version != null) {
+                resolved.add(ResolvedPlugin(plugin, version))
+                println("\r  ${GREEN}●${RESET} ${BOLD}${plugin.name}${RESET} ${DIM}v${version.versionName}${RESET}")
+            } else {
+                println("\r  ${RED}●${RESET} ${plugin.name} ${DIM}— no compatible version for $mcVersion${RESET}")
             }
         }
 
+        if (resolved.isEmpty()) {
+            println(ConsoleFormatter.error("No compatible versions found"))
+            return
+        }
+
+        // Collect all required dependencies
+        val allDeps = resolved.flatMap { it.version.dependencies.filter { d -> d.required } }
+        if (allDeps.isNotEmpty()) {
+            println()
+            println("  ${YELLOW}Dependencies (auto-install):${RESET}")
+            for (dep in allDeps) {
+                println("    ${DIM}●${RESET} ${dep.name}")
+            }
+        }
+
+        // Confirm
+        val pluginCount = resolved.size
+        val depCount = allDeps.size
+        val summary = buildString {
+            append("$pluginCount plugin${if (pluginCount != 1) "s" else ""}")
+            if (depCount > 0) append(" + $depCount dep${if (depCount != 1) "s" else ""}")
+        }
         println()
-        print("  ${YELLOW}Install to $CYAN$target$YELLOW? [Y/n]$RESET ")
+        print("  ${YELLOW}Install $summary to $CYAN$target$YELLOW? [Y/n]$RESET ")
         val confirm = readlnOrNull()?.trim()?.lowercase()
         if (confirm == "n" || confirm == "no") {
             println("${DIM}Cancelled.$RESET")
             return
         }
 
-        // Download main plugin
+        // Download all plugins + dependencies
         if (!pluginsDir.exists()) pluginsDir.createDirectories()
-        val file = searchClient.download(version, pluginsDir)
-        if (file == null) {
-            println(ConsoleFormatter.errorLine("Failed to download ${selected.name}"))
-            return
-        }
-        println(ConsoleFormatter.successLine("Installed ${CYAN}${selected.name}${RESET} ${DIM}(${version.fileName})${RESET}"))
+        println()
 
-        // Auto-install required dependencies
-        for (dep in requiredDeps) {
-            print("  ${DIM}Installing dependency: ${dep.name}...$RESET")
-            val depFile = searchClient.resolveAndDownloadDependency(dep, mcVersion, pluginsDir)
-            if (depFile != null) {
-                println("\r${ConsoleFormatter.successLine("  Dependency ${CYAN}${dep.name}${RESET} installed")}")
+        for ((result, version) in resolved) {
+            val file = searchClient.download(version, pluginsDir)
+            if (file != null) {
+                val size = if (version.fileSize > 0) " ${DIM}(${PluginSearchClient.formatSize(version.fileSize)} MB)${RESET}" else ""
+                println(ConsoleFormatter.successLine("${CYAN}${result.name}${RESET} v${version.versionName}$size"))
             } else {
-                println("\r${ConsoleFormatter.warnLine("  Could not auto-install ${dep.name} — install manually")}")
+                println(ConsoleFormatter.errorLine("Failed to download ${result.name}"))
+            }
+
+            // Auto-install required dependencies for this plugin
+            for (dep in version.dependencies.filter { it.required }) {
+                val depFile = searchClient.resolveAndDownloadDependency(dep, mcVersion, pluginsDir)
+                if (depFile != null) {
+                    println("  ${GREEN}+${RESET} ${DIM}${dep.name}${RESET}")
+                } else {
+                    println("  ${YELLOW}!${RESET} ${DIM}${dep.name} — install manually${RESET}")
+                }
             }
         }
+
+        println()
+        println("${DIM}Done. Restart affected services to load new plugins.$RESET")
     }
 
     /**
