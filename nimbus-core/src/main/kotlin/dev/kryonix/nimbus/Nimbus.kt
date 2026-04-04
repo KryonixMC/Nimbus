@@ -318,7 +318,8 @@ fun nimbusMain() = runBlocking {
         templatesDir = templatesDir,
         stressTestManager = stressTestManager,
         moduleContext = moduleContext,
-        moduleManager = moduleManager
+        moduleManager = moduleManager,
+        dispatcher = dispatcher
     )
 
     // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)

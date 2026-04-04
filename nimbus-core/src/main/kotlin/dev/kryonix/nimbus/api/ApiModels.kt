@@ -790,6 +790,54 @@ data class StressRampRequest(
     val durationSeconds: Long = 30
 )
 
+// ── Command DTOs ───────────────────────────────────────────────────
+
+@Serializable
+data class CommandSubcommandResponse(
+    val path: String,
+    val description: String,
+    val usage: String,
+    val completions: List<CommandCompletionResponse> = emptyList()
+)
+
+@Serializable
+data class CommandCompletionResponse(
+    val position: Int,
+    val type: String
+)
+
+@Serializable
+data class CommandMetaResponse(
+    val name: String,
+    val description: String,
+    val usage: String,
+    val permission: String,
+    val subcommands: List<CommandSubcommandResponse>
+)
+
+@Serializable
+data class CommandListResponse(
+    val commands: List<CommandMetaResponse>,
+    val total: Int
+)
+
+@Serializable
+data class CommandExecuteRequest(
+    val args: List<String> = emptyList()
+)
+
+@Serializable
+data class OutputLineResponse(
+    val type: String,
+    val text: String
+)
+
+@Serializable
+data class CommandExecuteResponse(
+    val success: Boolean,
+    val lines: List<OutputLineResponse>
+)
+
 // ── Event DTOs (for WebSocket) ──────────────────────────────────────
 
 @Serializable
