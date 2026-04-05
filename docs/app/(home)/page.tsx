@@ -15,7 +15,7 @@ export default function Page() {
   return (
     <main className="pt-4 pb-16">
       {/* Hero Card */}
-      <div className="relative flex min-h-[500px] border border-fd-border rounded-2xl overflow-hidden mx-auto w-full max-w-[1400px]">
+      <div className="relative flex min-h-[500px] pb-16 border border-fd-border rounded-2xl overflow-hidden mx-auto w-full max-w-[1400px]">
         <div className="absolute inset-0 -z-10">
           <div className="absolute inset-0 bg-gradient-to-br from-fd-primary/10 via-transparent to-fd-primary/5" />
           <div className="absolute top-0 left-1/3 h-[400px] w-[600px] rounded-full bg-fd-primary/8 blur-[120px]" />
@@ -56,13 +56,15 @@ export default function Page() {
             </a>
           </div>
 
-          <div className="mt-8 mb-8 w-full max-w-lg">
-            <p className="text-xs font-medium text-fd-muted-foreground mb-3">
-              One command to install
-            </p>
-            <InstallTabs />
-          </div>
         </div>
+      </div>
+
+      {/* Install — visually connected to hero */}
+      <div className="mx-auto -mt-8 relative z-10 max-w-2xl px-6">
+        <p className="text-center text-xs font-medium text-fd-muted-foreground mb-3">
+          One command to install
+        </p>
+        <InstallTabs />
       </div>
 
       {/* Section heading */}
