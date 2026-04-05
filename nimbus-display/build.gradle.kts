@@ -20,6 +20,10 @@ java {
     }
 }
 
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("-source", "16", "-target", "16"))
+}
+
 tasks.processResources {
     filesMatching("plugin.yml") {
         expand("version" to project.version)

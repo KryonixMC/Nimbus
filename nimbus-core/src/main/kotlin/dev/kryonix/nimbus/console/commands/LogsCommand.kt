@@ -4,8 +4,10 @@ import dev.kryonix.nimbus.console.Command
 import dev.kryonix.nimbus.console.ConsoleFormatter
 import dev.kryonix.nimbus.service.ServiceManager
 import dev.kryonix.nimbus.service.ServiceRegistry
+import java.io.InputStreamReader
+import java.nio.charset.CodingErrorAction
 import kotlin.io.path.exists
-import kotlin.io.path.readLines
+import kotlin.io.path.inputStream
 
 class LogsCommand(
     private val serviceManager: ServiceManager,
@@ -41,7 +43,10 @@ class LogsCommand(
         val logFile = service.workingDirectory.resolve("logs/latest.log")
 
         if (logFile.exists()) {
-            val allLines = logFile.readLines()
+            val decoder = Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE)
+            val allLines = InputStreamReader(logFile.inputStream(), decoder).use { it.readLines() }
             val lines = allLines.takeLast(lineCount)
 
             println(ConsoleFormatter.header("Logs: $serviceName"))
