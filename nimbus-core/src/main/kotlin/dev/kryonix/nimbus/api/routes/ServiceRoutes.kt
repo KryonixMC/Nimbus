@@ -57,6 +57,49 @@ fun Route.serviceRoutes(
             call.respond(ServiceListResponse(responses, responses.size))
         }
 
+        // GET /api/services/health — Aggregated health summary
+        get("health") {
+            val allServices = registry.getAll()
+            val readyServices = allServices.filter { it.state == ServiceState.READY }
+            val healthyCount = readyServices.count { it.healthy }
+            val unhealthyCount = readyServices.size - healthyCount
+
+            val avgTps = if (readyServices.isNotEmpty()) {
+                readyServices.sumOf { it.tps } / readyServices.size
+            } else 0.0
+
+            val totalUsedMb = allServices.sumOf { it.memoryUsedMb }
+            val totalMaxMb = allServices.sumOf { it.memoryMaxMb }
+            val memPct = if (totalMaxMb > 0) totalUsedMb.toDouble() / totalMaxMb * 100 else 0.0
+
+            val entries = allServices.sortedBy { it.name }.map { svc ->
+                val uptimeSec = svc.startedAt?.let { Duration.between(it, Instant.now()).seconds }
+                ServiceHealthEntry(
+                    name = svc.name,
+                    groupName = svc.groupName,
+                    state = svc.state.name,
+                    tps = svc.tps,
+                    memoryUsedMb = svc.memoryUsedMb,
+                    memoryMaxMb = svc.memoryMaxMb,
+                    healthy = svc.healthy,
+                    restartCount = svc.restartCount,
+                    uptimeSeconds = uptimeSec
+                )
+            }
+
+            call.respond(ServiceHealthSummaryResponse(
+                totalServices = allServices.size,
+                readyServices = readyServices.size,
+                healthyServices = healthyCount,
+                unhealthyServices = unhealthyCount,
+                averageTps = Math.round(avgTps * 100.0) / 100.0,
+                totalMemoryUsedMb = totalUsedMb,
+                totalMemoryMaxMb = totalMaxMb,
+                memoryUsagePercent = Math.round(memPct * 100.0) / 100.0,
+                services = entries
+            ))
+        }
+
         // GET /api/services/{name} — Get service details
         get("{name}") {
             val name = call.parameters["name"]!!

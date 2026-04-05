@@ -2,6 +2,10 @@ package dev.kryonix.nimbus.console.commands
 
 import dev.kryonix.nimbus.console.Command
 import dev.kryonix.nimbus.console.ConsoleFormatter
+import dev.kryonix.nimbus.module.CommandOutput
+import dev.kryonix.nimbus.module.CompletionMeta
+import dev.kryonix.nimbus.module.CompletionType
+import dev.kryonix.nimbus.module.SubcommandMeta
 import dev.kryonix.nimbus.service.ServiceRegistry
 import dev.kryonix.nimbus.service.ServiceState
 import java.time.Duration
@@ -14,24 +18,48 @@ class HealthCommand(
     override val name = "health"
     override val description = "Show health metrics for running services"
     override val usage = "health [service|group]"
+    override val permission = "nimbus.cloud.health"
+
+    override val subcommandMeta: List<SubcommandMeta> get() = listOf(
+        SubcommandMeta("", "Show health overview of all services", "health"),
+        SubcommandMeta("<service|group>", "Show health for a specific service or group", "health <name>",
+            listOf(CompletionMeta(0, CompletionType.GROUP)))
+    )
+
+    override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
+        val services = resolveServices(args)
+        if (services == null) {
+            output.error("No service or group '${args[0]}' found.")
+            return true
+        }
+        if (services.isEmpty()) {
+            output.info("No services running.")
+            return true
+        }
+
+        output.header("Service Health")
+        for (svc in services.sortedBy { it.name }) {
+            val health = if (svc.state != ServiceState.READY) "-"
+                else if (svc.healthy) "healthy" else "UNHEALTHY"
+            val mem = if (svc.memoryMaxMb > 0) "${svc.memoryUsedMb}/${svc.memoryMaxMb}MB" else "-"
+            output.item("${svc.name}: ${svc.state} | TPS ${String.format("%.1f", svc.tps)} | $mem | $health | restarts=${svc.restartCount}")
+        }
+
+        val readyServices = services.filter { it.state == ServiceState.READY }
+        val unhealthy = readyServices.count { !it.healthy }
+        if (unhealthy > 0) {
+            output.error("$unhealthy unhealthy service(s)")
+        } else if (readyServices.isNotEmpty()) {
+            output.success("All ready services healthy")
+        }
+        return true
+    }
 
     override suspend fun execute(args: List<String>) {
-        val services = if (args.isNotEmpty()) {
-            val filter = args[0]
-            // Try exact service match first, then group match
-            val exactService = registry.get(filter)
-            if (exactService != null) {
-                listOf(exactService)
-            } else {
-                val byGroup = registry.getByGroup(filter)
-                if (byGroup.isEmpty()) {
-                    println(ConsoleFormatter.error("No service or group '$filter' found."))
-                    return
-                }
-                byGroup
-            }
-        } else {
-            registry.getAll()
+        val services = resolveServices(args)
+        if (services == null) {
+            println(ConsoleFormatter.error("No service or group '${args[0]}' found."))
+            return
         }
 
         if (services.isEmpty()) {
@@ -142,5 +170,16 @@ class HealthCommand(
         } else {
             ConsoleFormatter.warn(count.toString())
         }
+    }
+
+    /** Returns null if filter didn't match, empty list if no services exist. */
+    private fun resolveServices(args: List<String>): List<dev.kryonix.nimbus.service.Service>? {
+        if (args.isEmpty()) return registry.getAll()
+        val filter = args[0]
+        val exactService = registry.get(filter)
+        if (exactService != null) return listOf(exactService)
+        val byGroup = registry.getByGroup(filter)
+        if (byGroup.isEmpty()) return null
+        return byGroup
     }
 }
