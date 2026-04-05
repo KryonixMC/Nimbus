@@ -122,10 +122,10 @@ export function transformerNimbus(): ShikiTransformer {
   return {
     name: 'nimbus-colorizer',
     code(this: ShikiTransformerContext, node) {
-      // Check if this code block has a Nimbus title via meta
+      // Title is parsed from meta by Fumadocs' parseMetaString into meta.title
       const meta: any = this.options.meta;
-      const raw: string = meta?.__raw ?? meta?.['__raw'] ?? '';
-      if (!raw.includes('title="Nimbus')) return;
+      const title: string = meta?.title ?? '';
+      if (!title.startsWith('Nimbus')) return;
 
       for (const lineEl of node.children) {
         if (lineEl.type !== 'element') continue;
