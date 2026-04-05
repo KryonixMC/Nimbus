@@ -15,7 +15,6 @@ import org.jline.terminal.TerminalBuilder
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /**
@@ -105,6 +104,53 @@ class UpdateChecker(
         val isPreRelease: Boolean,
         val expectedSize: Long = 0
     )
+
+    /**
+     * Check for available updates without downloading or prompting.
+     * Returns the update info if a newer version exists, null otherwise.
+     */
+    suspend fun checkForUpdate(): UpdateResult? {
+        val currentVersionStr = NimbusVersion.version
+        if (currentVersionStr == "dev") return null
+
+        val current = VersionInfo.parse(currentVersionStr) ?: return null
+        val releases = fetchReleases() ?: return null
+
+        val currentIsPreRelease = current.isPreRelease ||
+            releases.any { it.tagName == "v$current" && it.isPreRelease } ||
+            releases.any { it.tagName == "v${current.baseVersion}" && it.isPreRelease && it.version == current }
+
+        val latestStable = releases.filter { !it.isPreRelease }.maxByOrNull { it.version }
+
+        if (currentIsPreRelease) {
+            // Prefer stable upgrade, then pre-release
+            if (latestStable != null && latestStable.version > current) {
+                return UpdateResult(
+                    current, latestStable.version, classifyUpdate(current, latestStable.version),
+                    latestStable.downloadUrl, latestStable.releaseUrl, latestStable.changelog,
+                    isPreRelease = false, expectedSize = latestStable.expectedSize
+                )
+            }
+            val latestPreRelease = releases.filter { it.isPreRelease && it.version > current }.maxByOrNull { it.version }
+            if (latestPreRelease != null) {
+                return UpdateResult(
+                    current, latestPreRelease.version, classifyUpdate(current, latestPreRelease.version),
+                    latestPreRelease.downloadUrl, latestPreRelease.releaseUrl, latestPreRelease.changelog,
+                    isPreRelease = true, expectedSize = latestPreRelease.expectedSize
+                )
+            }
+        } else {
+            if (latestStable != null && latestStable.version > current) {
+                return UpdateResult(
+                    current, latestStable.version, classifyUpdate(current, latestStable.version),
+                    latestStable.downloadUrl, latestStable.releaseUrl, latestStable.changelog,
+                    isPreRelease = false, expectedSize = latestStable.expectedSize
+                )
+            }
+        }
+
+        return null
+    }
 
     /**
      * Check for updates and handle them.
@@ -328,8 +374,9 @@ class UpdateChecker(
                 return false
             }
 
-            val updateJar = currentJar.resolveSibling("nimbus-update.jar")
-            val backupJar = currentJar.resolveSibling("nimbus-backup.jar")
+            // Derive versioned filename from download URL (e.g. nimbus-controller-0.2.0.jar)
+            val assetName = update.downloadUrl.substringAfterLast('/')
+            val targetJar = currentJar.resolveSibling(assetName)
 
             print(ConsoleFormatter.hint("  Downloading v${update.latestVersion}... "))
             val response = client.get(update.downloadUrl) {
@@ -355,23 +402,13 @@ class UpdateChecker(
             logger.info("Update JAR SHA-256: {}", sha256)
 
             withContext(Dispatchers.IO) {
-                Files.write(updateJar, bytes)
+                Files.write(targetJar, bytes)
             }
             println(ConsoleFormatter.success("done (SHA-256: ${sha256.take(16)}...)"))
 
-            withContext(Dispatchers.IO) {
-                if (Files.exists(currentJar)) {
-                    Files.copy(currentJar, backupJar, StandardCopyOption.REPLACE_EXISTING)
-                }
-            }
-
-            withContext(Dispatchers.IO) {
-                Files.move(updateJar, currentJar, StandardCopyOption.REPLACE_EXISTING)
-            }
-
             val channel = if (update.isPreRelease) " (pre-release)" else ""
-            println(ConsoleFormatter.successLine("Updated to v${update.latestVersion}$channel (backup: ${backupJar.fileName})"))
-            println(ConsoleFormatter.warn("  Restart Nimbus to apply the update."))
+            println(ConsoleFormatter.successLine("Updated to v${update.latestVersion}$channel → ${targetJar.fileName}"))
+            println(ConsoleFormatter.warn("  Nimbus will restart automatically..."))
             println()
 
             true
@@ -379,6 +416,40 @@ class UpdateChecker(
             logger.error("Auto-update failed: {}", e.message)
             println(ConsoleFormatter.error("  Update failed: ${e.message}"))
             false
+        }
+    }
+
+    /**
+     * Cleans up old versioned JARs from previous updates.
+     * Keeps only the currently running JAR. Safe to call on startup since the old JAR
+     * is no longer locked (Windows file-lock concern addressed by deferring cleanup).
+     */
+    fun cleanupOldJars() {
+        val currentJar = resolveCurrentJar() ?: return
+        val parentDir = currentJar.parent ?: return
+        val currentFileName = currentJar.fileName.toString()
+
+        try {
+            Files.newDirectoryStream(parentDir) { path ->
+                val name = path.fileName.toString()
+                name != currentFileName && name.endsWith(".jar") && (
+                    name.startsWith("nimbus-controller-") ||
+                    (name.startsWith("nimbus-core-") && name.contains("-all")) ||
+                    name == "nimbus-update.jar" ||
+                    name == "nimbus-backup.jar"
+                )
+            }.use { stream ->
+                for (oldJar in stream) {
+                    try {
+                        Files.deleteIfExists(oldJar)
+                        logger.info("Cleaned up old JAR: {}", oldJar.fileName)
+                    } catch (e: Exception) {
+                        logger.debug("Could not delete old JAR {}: {}", oldJar.fileName, e.message)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logger.debug("Old JAR cleanup failed: {}", e.message)
         }
     }
 
