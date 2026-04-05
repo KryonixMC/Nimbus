@@ -3,6 +3,7 @@ package dev.kryonix.nimbus.database
 import dev.kryonix.nimbus.database.ServiceEvents
 import dev.kryonix.nimbus.module.Migration
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.time.Instant
@@ -56,10 +57,29 @@ class MigrationManager(private val database: Database) {
 
     /**
      * Runs all pending migrations in version order.
+     * Also detects and repairs incorrectly bootstrapped migrations
+     * (marked as applied but table doesn't actually exist).
      * Returns the number of migrations applied.
      */
     fun runPending(migrations: List<Migration>): Int {
         if (migrations.isEmpty()) return 0
+
+        // Repair: remove entries for non-baseline migrations that were incorrectly
+        // marked as applied by a previous buggy bootstrap (pre-fix for baseline flag)
+        transaction(database) {
+            val appliedRows = SchemaMigrations.selectAll().map {
+                it[SchemaMigrations.version] to it[SchemaMigrations.description]
+            }
+            for ((version, desc) in appliedRows) {
+                if (desc == "baseline (pre-0.2.0)") {
+                    val migration = migrations.find { it.version == version }
+                    if (migration != null && !migration.baseline) {
+                        logger.warn("Repairing incorrectly bootstrapped migration V{}: {}", version, migration.description)
+                        SchemaMigrations.deleteWhere { SchemaMigrations.version eq version }
+                    }
+                }
+            }
+        }
 
         val applied = transaction(database) {
             SchemaMigrations.selectAll().map { it[SchemaMigrations.version] }.toSet()
