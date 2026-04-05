@@ -24,19 +24,13 @@ function colorizeLine(line: string): Seg[] {
   const p = (t: string, c?: string) => { if (t) out.push({ text: t, color: c }); };
 
   // Banner: 4-line ASCII art gradient (blue → bright blue → cyan → bright cyan)
-  // Line 1: _  __ __ _   __ ___  _ __  ___
-  if (/^\s+_\s+__\s__\s_/.test(line)) { p(line, C.blue); return out; }
-  // Line 2: / |/ // // \,' // o.)/// /,' _/
-  if (/^\s+\/\s?\|/.test(line) && line.includes("o.)")) { p(line, C.brightBlue); return out; }
-  // Line 3: / || // // \,' // o \/ U /_\ \`.
-  if (/^\s?\/\s?\|\|/.test(line) && line.includes("o \\")) { p(line, C.cyan); return out; }
-  // Line 4: /_/|_//_//_/ /_//___,'\_,'/___,'
-  if (/^\/?_\/\|_/.test(line)) { p(line, C.brightCyan); return out; }
-  // "C L O U D" subtitle
+  if (line.includes('__ ___  _ __  ___')) { p(line, C.blue); return out; }
+  if (line.includes('o.)///')) { p(line, C.brightBlue); return out; }
+  if (line.includes('o \\/ U')) { p(line, C.cyan); return out; }
+  if (line.includes("/___,'")) { p(line, C.brightCyan); return out; }
   if (/^\s+C\sL\sO\sU\sD/.test(line)) { p(line, C.dim); return out; }
-  // Wizard intro lines
-  if (/^\s+Let's get your cloud ready/.test(line)) { p(line, C.dim); return out; }
-  if (/^\s+Fetching available versions/.test(line)) {
+  if (line.includes("Let's get your cloud ready")) { p(line, C.dim); return out; }
+  if (line.includes('Fetching available versions')) {
     const m = line.match(/^(.+)(✓)$/);
     if (m) { p(m[1], C.dim); p(m[2], C.green); return out; }
     p(line, C.dim); return out;
