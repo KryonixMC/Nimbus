@@ -1,5 +1,5 @@
 import { defineDocs, defineConfig } from 'fumadocs-mdx/config';
-import { transformerNimbus } from './lib/nimbus-transformer';
+import { rehypeNimbus } from './lib/rehype-nimbus';
 
 export const docs = defineDocs({
   dir: 'content/docs',
@@ -7,8 +7,7 @@ export const docs = defineDocs({
 
 export default defineConfig({
   mdxOptions: {
-    rehypeCodeOptions: {
-      transformers: [transformerNimbus()],
-    },
+    // rehypePlugins listed here run AFTER Fumadocs' built-in rehypeCode
+    rehypePlugins: [rehypeNimbus],
   },
 });
