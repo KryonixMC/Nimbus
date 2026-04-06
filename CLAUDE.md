@@ -125,11 +125,12 @@ nimbus-core/src/main/kotlin/dev/kryonix/nimbus/
 - Velocity forwarding: `modern` if all backends >=1.13, else `legacy` (BungeeCord)
 - Via plugins (ViaVersion/ViaBackwards) only on backend servers, never on proxy
 - Via plugin dependencies enforced: ViaBackwards auto-includes ViaVersion, ViaRewind requires ViaBackwards
-- EULA auto-accepted for Paper/Purpur/Pufferfish/Folia templates
+- EULA auto-accepted for Paper/Purpur/Pufferfish/Leaf/Folia templates
 - Pufferfish support: downloads from Jenkins CI (`ci.pufferfish.host`), treated as Paper-based (plugins, Via, performance optimizer)
+- Leaf support: downloads from Leaf API (`api.leafmc.one`), PaperMC-compatible API, treated as Paper-based (plugins, Via, performance optimizer)
 - Cardboard (BETA): optional Bukkit/Paper plugin support for Fabric servers, auto-downloads with iCommon dependency from Modrinth
 - Folia: SDK + NimbusPerms are Folia-compatible via SchedulerCompat
-- Performance optimizer: Aikar's JVM flags + Paper/Purpur/Pufferfish/Folia config tuning (optimize=true default)
+- Performance optimizer: Aikar's JVM flags + Paper/Purpur/Pufferfish/Leaf/Folia config tuning (optimize=true default)
 - Process ready detection: watches stdout for "Done" pattern (120s timeout, 180s for modded)
 - Phased startup order: proxies first (waits for READY) → then backends; ScalingEngine starts after initial boot
 - Graceful shutdown order: game servers → lobbies → proxies

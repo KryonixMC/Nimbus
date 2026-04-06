@@ -80,7 +80,7 @@ If you don't have Java 21, download it from [Adoptium](https://adoptium.net/) or
 </Callout>
 
 <Callout title="Java version matters" type="warn">
-Nimbus requires Java 21. It will not run on older versions. The Minecraft servers it manages may also need Java 21 (Paper 1.20.5+, Purpur 1.20.5+).
+Nimbus requires Java 21. It will not run on older versions. The Minecraft servers it manages may also need Java 21 (Paper 1.20.5+, Purpur 1.20.5+, Leaf 1.21.4+).
 </Callout>
 
 ## Building from Source
@@ -169,7 +169,7 @@ my-network/
 | `config/nimbus.toml` | Main configuration file for Nimbus. |
 | `config/groups/` | One TOML file per server group. This is where you define your server types. |
 | `templates/` | Template files that get copied to each service instance on startup. |
-| `templates/global/` | Files shared across **all backend servers** (Paper, Purpur, etc.). |
+| `templates/global/` | Files shared across **all backend servers** (Paper, Purpur, Leaf, etc.). |
 | `templates/global_proxy/` | Files shared across **all proxy servers** (Velocity). |
 | `services/static/` | Persistent service instances that survive restarts (e.g., proxy). |
 | `services/temp/` | Ephemeral instances created and destroyed by the scaling engine. |

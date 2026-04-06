@@ -301,12 +301,12 @@ nimbus » info BedWars
 Launch an interactive wizard to create a new server group. Clears the screen and walks through:
 
 1. Group name
-2. Server software (Paper, Pufferfish, Purpur, Folia, Forge, NeoForge, Fabric, Custom, or Modpack import)
+2. Server software (Paper, Pufferfish, Purpur, Leaf, Folia, Forge, NeoForge, Fabric, Custom, or Modpack import)
 3. Minecraft version (with tab completion from live version lists)
 4. Modloader version (for Forge/NeoForge/Fabric only)
 5. Static vs. dynamic mode
 6. Instance counts and memory
-7. Via plugins (ViaVersion/ViaBackwards/ViaRewind -- Paper/Purpur/Folia only)
+7. Via plugins (ViaVersion/ViaBackwards/ViaRewind -- Paper/Purpur/Leaf/Folia only)
 8. Automatic JAR download and template setup
 9. Optional immediate instance start
 
@@ -323,6 +323,7 @@ Available server software:
   paper       — Paper (optimized vanilla, plugins)
   pufferfish  — Pufferfish (Paper fork, performance)
   purpur      — Purpur (Paper fork, extra features)
+  leaf        — Leaf (Paper fork, performance + stability)
   folia       — Folia (regionized multithreading, 1.19.4+)
   forge       — Forge (mods, auto-installs)
   neoforge    — NeoForge (modern Forge fork)
@@ -366,6 +367,7 @@ Available server software:
   paper       — Paper (optimized vanilla, plugins)
   pufferfish  — Pufferfish (Paper fork, performance)
   purpur      — Purpur (Paper fork, extra features)
+  leaf        — Leaf (Paper fork, performance + stability)
   folia       — Folia (regionized multithreading, 1.19.4+)
   forge       — Forge (mods, auto-installs)
   neoforge    — NeoForge (modern Forge fork)
@@ -508,9 +510,9 @@ The `update` command enforces compatibility between server software families to 
 
 | Switch | Allowed | Reason |
 |--------|---------|--------|
-| Paper ↔ Pufferfish ↔ Purpur ↔ Folia | Yes | Same plugin API family (Paper forks). Note: most plugins won't work on Folia. |
+| Paper ↔ Pufferfish ↔ Purpur ↔ Leaf ↔ Folia | Yes | Same plugin API family (Paper forks). Note: most plugins won't work on Folia. |
 | Forge ↔ NeoForge | Yes (with warning) | Similar but diverging mod ecosystems |
-| Paper/Pufferfish/Purpur → Forge/Fabric/NeoForge | **No** | Plugins and mods are incompatible |
+| Paper/Pufferfish/Purpur/Leaf → Forge/Fabric/NeoForge | **No** | Plugins and mods are incompatible |
 | Forge/NeoForge → Fabric | **No** | Completely different mod formats |
 | Fabric → Forge/NeoForge | **No** | Completely different mod formats |
 | Any ↔ Velocity | **No** | Proxy vs game server |

@@ -127,7 +127,7 @@ templates/
 
 When Nimbus starts a `Lobby` service, it merges templates in order:
 
-1. **`templates/global/`** — Copied first. Contains files shared across all backend servers (Paper, Purpur, etc.). The nimbus-sdk plugin is auto-deployed here.
+1. **`templates/global/`** — Copied first. Contains files shared across all backend servers (Paper, Purpur, Leaf, etc.). The nimbus-sdk plugin is auto-deployed here.
 2. **`templates/lobby/`** — Copied second, overwriting any conflicts. Contains the group-specific server JAR, plugins, and configuration.
 
 For proxy services, `templates/global_proxy/` is used instead of `templates/global/`.
@@ -198,6 +198,7 @@ Nimbus auto-downloads server JARs from official APIs. The following platforms ar
 | **Paper** | Minecraft server | PaperMC API |
 | **Pufferfish** | Minecraft server (Paper fork, high-performance) | [Pufferfish CI](https://ci.pufferfish.host) |
 | **Purpur** | Minecraft server (Paper fork) | Purpur API |
+| **Leaf** | Minecraft server (Paper fork, performance + stability) | [Leaf API](https://api.leafmc.one) |
 | **Folia** | Minecraft server (regionized multithreading) | PaperMC API |
 | **Velocity** | Proxy | PaperMC API |
 | **Custom** | Any | You provide the JAR manually |
@@ -229,7 +230,7 @@ Modded servers are first-class citizens in Nimbus. When you create a Forge, Fabr
 You can also import entire modpacks from Modrinth with a single command -- see [Modpack Import](/docs/guide/modpacks).
 
 <Callout title="EULA" type="info">
-Nimbus automatically accepts the Minecraft EULA for Paper, Pufferfish, Purpur, and Folia servers. You don't need to manually edit `eula.txt`.
+Nimbus automatically accepts the Minecraft EULA for Paper, Pufferfish, Purpur, Leaf, and Folia servers. You don't need to manually edit `eula.txt`.
 </Callout>
 
 ### Via Plugins
@@ -288,7 +289,7 @@ Nimbus automatically allocates ports for all services:
 | Port Range | Used For |
 |---|---|
 | **25565** | Proxy (Velocity). This is the port players connect to. |
-| **30000 - 39999** | Backend servers (Paper, Purpur, etc.). Allocated sequentially. |
+| **30000 - 39999** | Backend servers (Paper, Purpur, Leaf, etc.). Allocated sequentially. |
 
 Ports are allocated when a service starts and released when it stops. Backend ports are checked for availability before assignment — if a port is already in use by another process, Nimbus skips it.
 

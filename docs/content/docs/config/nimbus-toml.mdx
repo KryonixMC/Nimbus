@@ -407,11 +407,11 @@ After Geyser translates the connection, backends see all players as normal Java 
 | Plugin | Deployed To | Purpose |
 |--------|-------------|---------|
 | **Geyser** | Proxy (Velocity) | Bedrock → Java protocol translation |
-| **Floodgate** | Proxy + all Paper/Purpur/Folia backends | Xbox Live authentication, Bedrock player identification |
+| **Floodgate** | Proxy + all Paper/Purpur/Leaf/Folia backends | Xbox Live authentication, Bedrock player identification |
 | **key.pem** | Proxy + all backends | Shared encryption key for Floodgate auth verification |
 
 <Callout type="warn">
-Floodgate is deployed to **Paper/Purpur/Folia** backends only. Modded servers (Fabric, Forge, NeoForge) do not receive Floodgate automatically — Bedrock players can still connect through the proxy, but backend plugins won't be able to identify them as Bedrock players.
+Floodgate is deployed to **Paper/Purpur/Leaf/Folia** backends only. Modded servers (Fabric, Forge, NeoForge) do not receive Floodgate automatically — Bedrock players can still connect through the proxy, but backend plugins won't be able to identify them as Bedrock players.
 </Callout>
 
 <Callout type="info">

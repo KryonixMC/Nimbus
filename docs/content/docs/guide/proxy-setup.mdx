@@ -68,7 +68,7 @@ Used when all backends are 1.13+. Modern forwarding uses a shared secret (`forwa
 
 Nimbus configures this automatically for every server type:
 - **Velocity** — Sets `player-info-forwarding-mode = "modern"` in `velocity.toml`
-- **Paper/Pufferfish/Purpur** — Enables velocity support in `paper-global.yml` and copies the forwarding secret
+- **Paper/Pufferfish/Purpur/Leaf** — Enables velocity support in `paper-global.yml` and copies the forwarding secret
 - **Fabric** — Configures [FabricProxy-Lite](https://modrinth.com/mod/fabricproxy-lite) with the secret (auto-installed)
 - **Forge/NeoForge** — Configures [proxy-compatible-forge](https://modrinth.com/mod/proxy-compatible-forge) with the secret (auto-installed)
 
@@ -368,7 +368,7 @@ Or enable it during the [setup wizard](/docs/guide/quickstart) when asked "Enabl
 When Bedrock support is enabled, Nimbus:
 
 1. **Downloads Geyser** — Velocity plugin that translates Bedrock protocol to Java protocol
-2. **Downloads Floodgate** — Deployed to both proxy and all Paper/Purpur/Folia backends
+2. **Downloads Floodgate** — Deployed to both proxy and all Paper/Purpur/Leaf/Folia backends
 3. **Manages `key.pem`** — Floodgate's shared encryption key is generated on first proxy start and distributed to all services automatically
 4. **Configures Geyser** — Each proxy instance gets its own UDP port and auto-generated Geyser config pointing to the correct Java port
 5. **Allocates UDP ports** — Starting from `base_port` (default 19132), incrementing for each proxy instance
@@ -426,7 +426,7 @@ This approach works well because Bedrock player counts are typically much smalle
 
 ### Limitations
 
-- **Modded backends** — Floodgate is only deployed to Paper/Purpur/Folia backends. Fabric/Forge/NeoForge servers do not receive Floodgate, so backend plugins won't identify Bedrock players on modded servers. Players can still connect through the proxy.
+- **Modded backends** — Floodgate is only deployed to Paper/Purpur/Leaf/Folia backends. Fabric/Forge/NeoForge servers do not receive Floodgate, so backend plugins won't identify Bedrock players on modded servers. Players can still connect through the proxy.
 - **Gameplay differences** — Bedrock and Java have different combat systems, redstone behavior, and some items/blocks are mapped to the closest equivalent. See [GeyserMC docs](https://geysermc.org/) for details.
 
 <Callout type="info">

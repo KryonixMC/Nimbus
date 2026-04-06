@@ -28,7 +28,7 @@ When Bedrock support is enabled, Nimbus performs the following on startup:
 | Step | What happens |
 |------|-------------|
 | **Geyser download** | Downloads the Geyser Velocity plugin from the GeyserMC API and deploys it to the proxy template |
-| **Floodgate download** | Downloads Floodgate for both Velocity and Paper, deploys to proxy + all Paper/Purpur/Folia backend templates |
+| **Floodgate download** | Downloads Floodgate for both Velocity and Paper, deploys to proxy + all Paper/Purpur/Leaf/Folia backend templates |
 | **key.pem distribution** | Generates Floodgate's shared encryption key on first proxy start, then copies it to every backend service automatically |
 | **Geyser config** | Auto-generates `config.yml` for Geyser with the correct Java port, UDP port, and MOTD/player count passthrough |
 | **UDP port allocation** | Assigns each proxy instance a unique Bedrock port starting from `base_port` |
@@ -110,7 +110,7 @@ After Geyser translates the connection, backends see all players as normal Java 
 
 ## Limitations
 
-- **Modded backends** -- Floodgate is only deployed to Paper/Purpur/Folia backends. Fabric/Forge/NeoForge servers do not receive Floodgate, so backend plugins cannot identify Bedrock players on modded servers. Players can still connect through the proxy.
+- **Modded backends** -- Floodgate is only deployed to Paper/Purpur/Leaf/Folia backends. Fabric/Forge/NeoForge servers do not receive Floodgate, so backend plugins cannot identify Bedrock players on modded servers. Players can still connect through the proxy.
 - **Gameplay differences** -- Bedrock and Java have different combat systems, redstone behavior, and some items/blocks are mapped to the closest equivalent. See [GeyserMC docs](https://geysermc.org/) for details.
 - **Folia** -- Floodgate is deployed to Folia backends, but some Floodgate features may not work due to regionized threading.
 
