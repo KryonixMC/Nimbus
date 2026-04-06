@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   },
   description:
     'Dynamic server management from a single JAR. Auto-scaling, proxy integration, and a powerful API.',
-  icons: { icon: '/Nimbus/favicon.svg' },
+  icons: { icon: '/Nimbus/icon.png' },
   metadataBase: new URL('https://KryonixMC.github.io/Nimbus'),
   openGraph: {
     type: 'website',

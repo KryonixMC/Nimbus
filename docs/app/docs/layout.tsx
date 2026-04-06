@@ -1,5 +1,6 @@
 import { DocsLayout } from 'fumadocs-ui/layouts/docs';
 import { source } from '@/lib/source';
+import { NavTitle } from '@/components/nav-title';
 import type { ReactNode } from 'react';
 import {
   BookOpen,
@@ -33,7 +34,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <DocsLayout
       tree={source.getPageTree()}
       nav={{
-        title: 'Nimbus',
+        title: <NavTitle />,
       }}
       sidebar={{
         tabs: [
