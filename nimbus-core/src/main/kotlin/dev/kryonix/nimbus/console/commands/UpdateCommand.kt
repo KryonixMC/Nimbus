@@ -98,7 +98,7 @@ class UpdateCommand(
     }
 
     private fun familyOf(software: ServerSoftware): SoftwareFamily = when (software) {
-        ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA -> SoftwareFamily.PLUGIN
+        ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.LEAF, ServerSoftware.FOLIA -> SoftwareFamily.PLUGIN
         ServerSoftware.FORGE, ServerSoftware.NEOFORGE -> SoftwareFamily.FORGE
         ServerSoftware.FABRIC -> SoftwareFamily.FABRIC
         ServerSoftware.VELOCITY -> SoftwareFamily.PROXY
@@ -427,6 +427,7 @@ class UpdateCommand(
             ServerSoftware.PAPER -> softwareResolver.fetchPaperVersions()
             ServerSoftware.PUFFERFISH -> softwareResolver.fetchPufferfishVersions()
             ServerSoftware.PURPUR -> softwareResolver.fetchPurpurVersions()
+            ServerSoftware.LEAF -> softwareResolver.fetchLeafVersions()
             ServerSoftware.FOLIA -> softwareResolver.fetchFoliaVersions()
             ServerSoftware.VELOCITY -> softwareResolver.fetchVelocityVersions()
             ServerSoftware.FORGE -> softwareResolver.fetchForgeGameVersions()
@@ -553,6 +554,7 @@ class UpdateCommand(
         "paper" -> ServerSoftware.PAPER
         "pufferfish" -> ServerSoftware.PUFFERFISH
         "purpur" -> ServerSoftware.PURPUR
+        "leaf" -> ServerSoftware.LEAF
         "folia" -> ServerSoftware.FOLIA
         "forge" -> ServerSoftware.FORGE
         "neoforge" -> ServerSoftware.NEOFORGE

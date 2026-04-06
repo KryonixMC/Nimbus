@@ -73,6 +73,7 @@ class CreateGroupCommand(
                 ServerSoftware.PAPER -> softwareResolver.fetchPaperVersions()
                 ServerSoftware.PUFFERFISH -> softwareResolver.fetchPufferfishVersions()
                 ServerSoftware.PURPUR -> softwareResolver.fetchPurpurVersions()
+                ServerSoftware.LEAF -> softwareResolver.fetchLeafVersions()
                 ServerSoftware.FOLIA -> softwareResolver.fetchFoliaVersions()
                 ServerSoftware.FORGE -> softwareResolver.fetchForgeGameVersions()
                 ServerSoftware.NEOFORGE -> softwareResolver.fetchNeoForgeGameVersions()
@@ -159,7 +160,7 @@ class CreateGroupCommand(
             val memory = prompt("Memory per instance", defaultMemory)
 
             // Step 7: Via plugins (Paper/Purpur only)
-            val viaPlugins = if (software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA)) {
+            val viaPlugins = if (software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.LEAF, ServerSoftware.FOLIA)) {
                 promptViaPlugins(w, version, versions.latest)
             } else {
                 emptyList()
@@ -314,6 +315,7 @@ class CreateGroupCommand(
             InteractivePicker.Option("paper", "Paper", "optimized vanilla, plugins"),
             InteractivePicker.Option("purpur", "Purpur", "Paper fork, extra features"),
             InteractivePicker.Option("pufferfish", "Pufferfish", "Paper fork, high-performance"),
+            InteractivePicker.Option("leaf", "Leaf", "Paper fork, performance + stability"),
             InteractivePicker.Option("folia", "Folia", "regionized multithreading, 1.19.4+"),
             InteractivePicker.Option("forge", "Forge", "mods, auto-installs"),
             InteractivePicker.Option("neoforge", "NeoForge", "modern Forge fork"),
@@ -331,6 +333,7 @@ class CreateGroupCommand(
         return when (chosen.id) {
             "pufferfish" -> ServerSoftware.PUFFERFISH
             "purpur" -> ServerSoftware.PURPUR
+            "leaf" -> ServerSoftware.LEAF
             "folia" -> ServerSoftware.FOLIA
             "forge" -> ServerSoftware.FORGE
             "neoforge" -> ServerSoftware.NEOFORGE

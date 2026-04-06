@@ -34,7 +34,7 @@ const features = [
   {
     icon: <PackageIcon className="size-5" />,
     title: 'Auto-Download',
-    desc: 'Paper, Purpur, Velocity, Forge, Fabric, NeoForge — JARs downloaded automatically.',
+    desc: 'Paper, Purpur, Leaf, Velocity, Forge, Fabric, NeoForge — JARs downloaded automatically.',
   },
   {
     icon: <ShieldIcon className="size-5" />,
@@ -59,7 +59,7 @@ const features = [
 ];
 
 const platforms = [
-  'Paper', 'Purpur', 'Pufferfish', 'Folia', 'Velocity',
+  'Paper', 'Purpur', 'Pufferfish', 'Leaf', 'Folia', 'Velocity',
   'Forge', 'Fabric', 'NeoForge', 'Vanilla',
 ];
 

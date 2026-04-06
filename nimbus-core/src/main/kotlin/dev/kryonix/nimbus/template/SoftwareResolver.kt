@@ -181,6 +181,22 @@ class SoftwareResolver {
     }
 
     /**
+     * Fetches available Leaf versions from the Leaf API.
+     * Leaf uses a PaperMC-compatible API at api.leafmc.one.
+     */
+    suspend fun fetchLeafVersions(): VersionList {
+        return try {
+            val response = client.get("https://api.leafmc.one/v2/projects/leaf")
+            if (response.status != HttpStatusCode.OK) return VersionList.EMPTY
+            val data = json.decodeFromString<PaperProjectResponse>(response.bodyAsText())
+            categorizeVersions(data.versions)
+        } catch (e: Exception) {
+            logger.error("Failed to fetch Leaf versions: {}", e.message)
+            VersionList.EMPTY
+        }
+    }
+
+    /**
      * Fetches available Velocity versions.
      */
     suspend fun fetchVelocityVersions(): VersionList {
@@ -667,6 +683,7 @@ class SoftwareResolver {
         return when (software) {
             ServerSoftware.PURPUR -> downloadPurpur(version, targetDir)
             ServerSoftware.PUFFERFISH -> downloadPufferfish(version, targetDir)
+            ServerSoftware.LEAF -> downloadLeaf(version, targetDir)
             ServerSoftware.PAPER, ServerSoftware.FOLIA, ServerSoftware.VELOCITY -> downloadPaperMC(software, version, targetDir)
             else -> null
         }
@@ -961,6 +978,36 @@ class SoftwareResolver {
             targetFile
         } catch (e: Exception) {
             logger.error("Failed to download Pufferfish {}: {}", version, e.message, e)
+            null
+        }
+    }
+
+    private suspend fun downloadLeaf(version: String, targetDir: Path): Path? {
+        return try {
+            val buildsUrl = "https://api.leafmc.one/v2/projects/leaf/versions/$version/builds"
+
+            val buildsResponse = client.get(buildsUrl)
+            if (buildsResponse.status != HttpStatusCode.OK) {
+                logger.error("Failed to fetch Leaf builds for {}: HTTP {}", version, buildsResponse.status)
+                return null
+            }
+
+            val builds = json.decodeFromString<PaperBuildsResponse>(buildsResponse.bodyAsText())
+            if (builds.builds.isEmpty()) {
+                logger.error("No builds found for Leaf {}", version)
+                return null
+            }
+
+            val latestBuild = builds.builds.last()
+            val downloadEntry = latestBuild.downloads["application"] ?: run {
+                logger.error("No application download for Leaf {} build {}", version, latestBuild.build)
+                return null
+            }
+
+            val downloadUrl = "https://api.leafmc.one/v2/projects/leaf/versions/$version/builds/${latestBuild.build}/downloads/${downloadEntry.name}"
+            downloadFile(downloadUrl, targetDir, ServerSoftware.LEAF, version, "build ${latestBuild.build}", expectedSha256 = downloadEntry.sha256)
+        } catch (e: Exception) {
+            logger.error("Failed to download Leaf {}: {}", version, e.message, e)
             null
         }
     }

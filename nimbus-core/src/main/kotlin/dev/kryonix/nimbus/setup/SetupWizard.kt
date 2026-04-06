@@ -38,6 +38,7 @@ class SetupWizard(
     private var paperVersions: SoftwareResolver.VersionList? = null
     private var pufferfishVersions: SoftwareResolver.VersionList? = null
     private var purpurVersions: SoftwareResolver.VersionList? = null
+    private var leafVersions: SoftwareResolver.VersionList? = null
     private var foliaVersions: SoftwareResolver.VersionList? = null
     private var velocityVersions: SoftwareResolver.VersionList? = null
 
@@ -102,6 +103,7 @@ class SetupWizard(
             paperVersions = softwareResolver.fetchPaperVersions()
             pufferfishVersions = softwareResolver.fetchPufferfishVersions()
             purpurVersions = softwareResolver.fetchPurpurVersions()
+            leafVersions = softwareResolver.fetchLeafVersions()
             foliaVersions = softwareResolver.fetchFoliaVersions()
             velocityVersions = softwareResolver.fetchVelocityVersions()
             w.println(" ${ConsoleFormatter.colorize("✓", ConsoleFormatter.GREEN)}")
@@ -511,6 +513,7 @@ class SetupWizard(
             InteractivePicker.Option("paper", "Paper", "recommended, best plugin support"),
             InteractivePicker.Option("purpur", "Purpur", "Paper fork with extra gameplay config"),
             InteractivePicker.Option("pufferfish", "Pufferfish", "Paper fork optimized for large servers"),
+            InteractivePicker.Option("leaf", "Leaf", "Paper fork, performance + stability balance"),
             InteractivePicker.Option("folia", "Folia", "Paper fork with regionized multithreading")
         )
         val index = InteractivePicker.pickOne(terminal, options)
@@ -520,6 +523,7 @@ class SetupWizard(
         return when (chosen.id) {
             "purpur" -> ServerSoftware.PURPUR
             "pufferfish" -> ServerSoftware.PUFFERFISH
+            "leaf" -> ServerSoftware.LEAF
             "folia" -> ServerSoftware.FOLIA
             else -> ServerSoftware.PAPER
         }
@@ -530,6 +534,7 @@ class SetupWizard(
             ServerSoftware.PAPER -> paperVersions
             ServerSoftware.PUFFERFISH -> pufferfishVersions
             ServerSoftware.PURPUR -> purpurVersions
+            ServerSoftware.LEAF -> leafVersions
             ServerSoftware.FOLIA -> foliaVersions
             ServerSoftware.VELOCITY -> velocityVersions
             else -> paperVersions // Modded servers use their own version prompts in CreateGroupCommand

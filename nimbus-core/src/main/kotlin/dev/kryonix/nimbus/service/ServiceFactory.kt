@@ -169,7 +169,7 @@ class ServiceFactory(
             )
 
             // Apply global templates (always overwrite, even for static services)
-            val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA)
+            val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.LEAF, ServerSoftware.FOLIA)
             if (isPaperBased) {
                 templateManager.applyGlobalTemplate(templatesDir.resolve("global"), workDir)
             }
@@ -196,7 +196,7 @@ class ServiceFactory(
                 else -> {
                     configPatcher.patchServerProperties(workDir, port, bedrockEnabled = config.bedrock.enabled)
 
-                    val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.FOLIA)
+                    val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PUFFERFISH, ServerSoftware.PURPUR, ServerSoftware.LEAF, ServerSoftware.FOLIA)
                     val velocityTemplateDir = templatesDir.resolve("proxy")
 
                     if (isPaperBased) {
@@ -322,7 +322,7 @@ class ServiceFactory(
         val deployments = moduleContext?.pluginDeployments
         if (deployments.isNullOrEmpty() || software == ServerSoftware.VELOCITY) return
 
-        val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PURPUR, ServerSoftware.PUFFERFISH, ServerSoftware.FOLIA)
+        val isPaperBased = software in listOf(ServerSoftware.PAPER, ServerSoftware.PURPUR, ServerSoftware.PUFFERFISH, ServerSoftware.LEAF, ServerSoftware.FOLIA)
         if (!isPaperBased) return
 
         val pluginsDir = workDir.resolve("plugins")
