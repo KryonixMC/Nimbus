@@ -20,7 +20,7 @@ object PlayerSessions : Table("player_sessions") {
 }
 
 /** Aggregated player metadata (first seen, last seen, total playtime). */
-object PlayerMeta : Table("player_meta") {
+object PlayerMeta : Table("player_tracking") {
     val uuid = varchar("uuid", 36)
     val name = varchar("name", 16)
     val firstSeen = varchar("first_seen", 30)
