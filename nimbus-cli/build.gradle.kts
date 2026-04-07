@@ -36,7 +36,10 @@ dependencies {
 
 tasks.jar {
     manifest {
-        attributes("Implementation-Version" to project.version)
+        attributes(
+            "Implementation-Version" to project.version,
+            "Enable-Native-Access" to "ALL-UNNAMED"
+        )
     }
 }
 

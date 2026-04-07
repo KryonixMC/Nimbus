@@ -7,6 +7,7 @@ import io.ktor.client.plugins.websocket.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import java.lang.management.ManagementFactory
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val RESET = "\u001B[0m"
@@ -17,7 +18,47 @@ private const val BOLD = "\u001B[1m"
 private const val DIM = "\u001B[2m"
 private const val BRIGHT_CYAN = "\u001B[96m"
 
+/** Marker class for locating the JAR path */
+private class NimbusCliMarker
+
 fun main(args: Array<String>) {
+    // Relaunch with --enable-native-access=ALL-UNNAMED if not set (suppresses JLine warnings on Java 21+)
+    if (needsNativeAccessRelaunch()) {
+        val javaExe = ProcessHandle.current().info().command().orElse("java")
+        val jarPath = java.nio.file.Paths.get(NimbusCliMarker::class.java.protectionDomain.codeSource.location.toURI()).toString()
+        val currentArgs = ManagementFactory.getRuntimeMXBean().inputArguments
+
+        val cmd = mutableListOf(javaExe)
+        cmd.addAll(currentArgs)
+        cmd.add("--enable-native-access=ALL-UNNAMED")
+        cmd.addAll(listOf("-jar", jarPath))
+        cmd.addAll(args)
+
+        val process = ProcessBuilder(cmd)
+            .inheritIO()
+            .start()
+
+        Runtime.getRuntime().addShutdownHook(Thread {
+            if (process.isAlive) {
+                process.destroy()
+                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                if (process.isAlive) process.destroyForcibly()
+            }
+        })
+        System.exit(process.waitFor())
+    }
+
+    cliMain(args)
+}
+
+private fun needsNativeAccessRelaunch(): Boolean {
+    val runtimeVersion = Runtime.version().feature()
+    if (runtimeVersion < 21) return false
+    return ManagementFactory.getRuntimeMXBean().inputArguments
+        .none { it.startsWith("--enable-native-access") }
+}
+
+fun cliMain(args: Array<String>) {
     val parsed = parseArgs(args)
 
     if (parsed.help) {
