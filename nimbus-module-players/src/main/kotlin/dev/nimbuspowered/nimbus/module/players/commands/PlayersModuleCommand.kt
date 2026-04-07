@@ -6,7 +6,11 @@ import dev.nimbuspowered.nimbus.console.ConsoleFormatter.CYAN
 import dev.nimbuspowered.nimbus.console.ConsoleFormatter.DIM
 import dev.nimbuspowered.nimbus.console.ConsoleFormatter.GREEN
 import dev.nimbuspowered.nimbus.console.ConsoleFormatter.RESET
+import dev.nimbuspowered.nimbus.module.CommandOutput
+import dev.nimbuspowered.nimbus.module.CompletionMeta
+import dev.nimbuspowered.nimbus.module.CompletionType
 import dev.nimbuspowered.nimbus.module.ModuleCommand
+import dev.nimbuspowered.nimbus.module.SubcommandMeta
 import dev.nimbuspowered.nimbus.module.players.PlayerTracker
 import java.time.Duration
 import java.time.Instant
@@ -18,6 +22,89 @@ class PlayersModuleCommand(private val tracker: PlayerTracker) : ModuleCommand {
     override val description = "Player tracking and management"
     override val usage = "players [list|info <name>|history <name>|stats]"
     override val permission = "nimbus.players"
+
+    override val subcommandMeta = listOf(
+        SubcommandMeta("list", "List online players", "players list [service]",
+            listOf(CompletionMeta(0, CompletionType.GROUP))),
+        SubcommandMeta("info", "Player details", "players info <name>",
+            listOf(CompletionMeta(0, CompletionType.PLAYER))),
+        SubcommandMeta("history", "Session history", "players history <name>",
+            listOf(CompletionMeta(0, CompletionType.PLAYER))),
+        SubcommandMeta("stats", "Aggregate statistics", "players stats")
+    )
+
+    override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
+        val sub = args.firstOrNull()?.lowercase() ?: "list"
+        when (sub) {
+            "list" -> {
+                val service = args.getOrNull(1)
+                val players = if (service != null) tracker.getPlayersOnService(service)
+                else tracker.getOnlinePlayers().toList()
+                if (players.isEmpty()) {
+                    output.info("No players online" + if (service != null) " on $service" else "")
+                    return true
+                }
+                output.header("Online Players (${players.size})")
+                for (p in players.sortedBy { it.currentService }) {
+                    val duration = formatDuration(Duration.between(p.connectedAt, Instant.now()))
+                    output.item("${p.name} on ${p.currentService} ($duration)")
+                }
+            }
+            "info" -> {
+                val name = args.getOrNull(1) ?: run { output.error("Usage: players info <name>"); return true }
+                val online = tracker.getPlayerByName(name)
+                val uuid = online?.uuid ?: tracker.resolveUuid(name)
+                val meta = if (uuid != null) tracker.getPlayerMeta(uuid) else null
+                if (online != null) {
+                    output.header("Player: ${online.name}")
+                    output.item("UUID: ${online.uuid}")
+                    output.item("Service: ${online.currentService} (${online.currentGroup})")
+                    output.success("Status: Online")
+                    output.item("Session: ${formatDuration(Duration.between(online.connectedAt, Instant.now()))}")
+                    if (meta != null) {
+                        output.item("First seen: ${formatTimestamp(meta["firstSeen"]!!)}")
+                        output.item("Total playtime: ${formatDuration(Duration.ofSeconds(meta["totalPlaytimeSeconds"]!!.toLong()))}")
+                    }
+                } else if (meta != null) {
+                    output.header("Player: ${meta["name"]}")
+                    output.item("UUID: ${meta["uuid"]}")
+                    output.info("Status: Offline")
+                    output.item("First seen: ${formatTimestamp(meta["firstSeen"]!!)}")
+                    output.item("Last seen: ${formatTimestamp(meta["lastSeen"]!!)}")
+                    output.item("Total playtime: ${formatDuration(Duration.ofSeconds(meta["totalPlaytimeSeconds"]!!.toLong()))}")
+                } else {
+                    output.error("Player '$name' not found")
+                }
+            }
+            "history" -> {
+                val name = args.getOrNull(1) ?: run { output.error("Usage: players history <name>"); return true }
+                val uuid = tracker.resolveUuid(name) ?: run { output.error("Player '$name' not found"); return true }
+                val history = tracker.getSessionHistory(uuid, 10)
+                if (history.isEmpty()) { output.info("No session history for $name"); return true }
+                output.header("Session History: $name (last 10)")
+                for (entry in history) {
+                    val disconnected = entry["disconnectedAt"]?.let { formatTimestamp(it) } ?: "active"
+                    output.item("${entry["service"]} (${entry["group"]})  ${formatTimestamp(entry["connectedAt"]!!)} → $disconnected")
+                }
+            }
+            "stats" -> {
+                val stats = tracker.getStats()
+                output.header("Player Stats")
+                output.item("Online: ${stats["online"]}")
+                output.item("Total unique: ${stats["totalUnique"]}")
+                @Suppress("UNCHECKED_CAST")
+                val perService = stats["perService"] as? Map<String, Int> ?: emptyMap()
+                for ((svc, count) in perService) {
+                    output.item("  $svc: $count")
+                }
+            }
+            else -> {
+                output.error("Unknown subcommand: $sub")
+                output.info("Usage: $usage")
+            }
+        }
+        return true
+    }
 
     override suspend fun execute(args: List<String>) {
         val sub = args.firstOrNull()?.lowercase() ?: "list"
