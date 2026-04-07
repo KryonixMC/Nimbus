@@ -89,15 +89,17 @@ The first public release shipped a fully functional cloud system:
 
 Three pillars: **resilience** (services survive controller crashes), **security** (proper API auth), and **correctness** (no duplicate services after restart).
 
-- **Local PID Persistence** — `ControllerStateStore` persists service PIDs to `state/services.json`. On restart, re-adopts running processes via `ProcessHandle.adopt()` (Windows-compatible)
-- **State Reconciliation** — Grace period (`reconciliation_delay`, default 10s) lets agents report running services before the controller starts new instances. Registry rebuilt from agent reports before scaling rules evaluate
-- **JWT Scoped API Auth** — Opt-in via `jwt_enabled = true`. HMAC-SHA256 tokens with 13 granular scopes, `POST /api/tokens` to generate, `GET /api/tokens/scopes` to list. Game servers receive scoped JWT automatically. Legacy bearer tokens still work
+- **Database Migration System** — `MigrationManager` with versioned schema changes, auto-bootstrap for pre-0.2.0 databases, module migrations via `ModuleContext.registerMigrations()`
+- **Audit Logging** — `AuditCollector` with EventBus subscription, actor tracking, `audit` console command, `GET /api/audit` endpoint, configurable retention (default 90 days)
+- **Environment Variable Overrides** — `NIMBUS_API_TOKEN`, `NIMBUS_DB_*`, `NIMBUS_CLUSTER_TOKEN`, `NIMBUS_AGENT_TOKEN`, `NIMBUS_AGENT_CONTROLLER` override TOML config
+- **Cluster TLS** — Netty engine with native `sslConnector`, auto-generated self-signed keystore, `wss://` default (breaking)
+- **Local PID Persistence** — `ControllerStateStore` persists service PIDs to `state/services.json`, re-adopts running processes via `ProcessHandle.adopt()` (Windows-compatible)
+- **State Reconciliation** — Grace period (`reconciliation_delay`, default 10s) lets agents report running services before new instances start
+- **JWT Scoped API Auth** — Opt-in via `jwt_enabled = true`, HMAC-SHA256 tokens with 13 granular scopes, token management endpoints, service-level JWT
 - **Leaf Support** — Leaf (Paper fork) added as supported server software
 - **Org Rename** — `KryonixMC` to `NimbusPowered`, package `dev.nimbuspowered.nimbus`
 - **Fumadocs** — Documentation migrated from VitePress to Next.js + Fumadocs
-- **Migration Self-Repair** — Baseline detection fixes for upgrades from v0.1.x
 - **Interactive Pickers** — Arrow-key selection replacing Y/N prompts throughout
-- **Windows Fixes** — TemplateManager skips locked files, mainClass reference corrected
 
 ---
 
