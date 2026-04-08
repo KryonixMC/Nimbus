@@ -56,6 +56,38 @@ export async function apiFetch<T = unknown>(
   return res.json();
 }
 
+/**
+ * Upload a file via multipart/form-data (no Content-Type header — browser sets boundary).
+ */
+export async function apiUpload<T = unknown>(
+  path: string,
+  formData: FormData
+): Promise<T> {
+  const apiUrl = getApiUrl();
+  const token = getToken();
+
+  const res = await fetch(`${apiUrl}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    clearCredentials();
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.error || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export function apiWebSocket(path: string): WebSocket {
   const apiUrl = getApiUrl().replace(/^http/, "ws");
   const token = getToken();
