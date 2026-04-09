@@ -2,7 +2,6 @@ import { type NextRequest } from "next/server";
 
 const HEADER_CONTROLLER_URL = "x-nimbus-controller";
 const HEADER_CONTROLLER_TOKEN = "x-nimbus-token";
-const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50 MB
 
 /**
  * Server-side proxy for Nimbus controller API.
@@ -44,16 +43,14 @@ async function proxyRequest(
     headers.set("Content-Type", contentType);
   }
 
+  const contentLength = request.headers.get("content-length");
+  if (contentLength) {
+    headers.set("Content-Length", contentLength);
+  }
+
   const hasBody = !["GET", "HEAD", "OPTIONS"].includes(request.method);
   let body: BodyInit | null = null;
   if (hasBody && request.body) {
-    const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength) > MAX_BODY_SIZE) {
-      return Response.json(
-        { error: "Request body too large" },
-        { status: 413 }
-      );
-    }
     body = request.body;
   }
 
