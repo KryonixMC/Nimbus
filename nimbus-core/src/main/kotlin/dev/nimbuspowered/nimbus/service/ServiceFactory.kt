@@ -377,6 +377,23 @@ class ServiceFactory(
             return null
         }
 
+        // Ensure proxy forwarding mods match the proxyEnabled setting for modded servers
+        if (software in setOf(ServerSoftware.FORGE, ServerSoftware.NEOFORGE, ServerSoftware.FABRIC)) {
+            if (config.proxyEnabled) {
+                when (software) {
+                    ServerSoftware.FABRIC -> softwareResolver.ensureFabricProxyMod(workDir, config.version)
+                    ServerSoftware.FORGE, ServerSoftware.NEOFORGE -> softwareResolver.ensureForwardingMod(software, config.version, workDir)
+                    else -> {}
+                }
+            } else {
+                when (software) {
+                    ServerSoftware.FABRIC -> softwareResolver.removeFabricProxyMod(workDir)
+                    ServerSoftware.FORGE, ServerSoftware.NEOFORGE -> softwareResolver.removeForwardingMod(workDir)
+                    else -> {}
+                }
+            }
+        }
+
         val service = Service(
             name = serviceName,
             groupName = serviceName,

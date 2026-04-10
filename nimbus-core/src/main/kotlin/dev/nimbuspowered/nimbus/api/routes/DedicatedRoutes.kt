@@ -109,7 +109,7 @@ fun Route.dedicatedRoutes(
         // PUT /api/dedicated/{name} — Update config (name is immutable, taken from URL)
         put("{name}") {
             val name = call.parameters["name"]!!
-            dedicatedServiceManager.getConfig(name)
+            val existing = dedicatedServiceManager.getConfig(name)
                 ?: return@put call.respond(HttpStatusCode.NotFound, apiError("Dedicated service '$name' not found", ApiErrors.DEDICATED_NOT_FOUND))
 
             val request = call.receive<CreateDedicatedRequest>().copy(name = name)
@@ -156,8 +156,32 @@ fun Route.dedicatedRoutes(
             dedicatedServiceManager.writeTOML(config)
             dedicatedServiceManager.addConfig(config)
 
-            val msg = if (wasRunning) "Dedicated service '$name' updated (was running, stopped — restart to apply)"
-                      else "Dedicated service '$name' updated"
+            // Proxy-enabled toggle for modded servers: install or remove forwarding mods
+            val proxyChanged = existing.dedicated.proxyEnabled != request.proxyEnabled
+            val resolver = softwareResolver
+            var proxyModMsg: String? = null
+            if (proxyChanged && resolver != null && software in listOf(ServerSoftware.FORGE, ServerSoftware.NEOFORGE, ServerSoftware.FABRIC)) {
+                val serviceDir = dedicatedServiceManager.getServiceDirectory(name)
+                if (request.proxyEnabled) {
+                    when (software) {
+                        ServerSoftware.FABRIC -> resolver.ensureFabricProxyMod(serviceDir, request.version)
+                        ServerSoftware.FORGE, ServerSoftware.NEOFORGE -> resolver.ensureForwardingMod(software, request.version, serviceDir)
+                        else -> {}
+                    }
+                    proxyModMsg = "proxy forwarding mod installed"
+                } else {
+                    when (software) {
+                        ServerSoftware.FABRIC -> resolver.removeFabricProxyMod(serviceDir)
+                        ServerSoftware.FORGE, ServerSoftware.NEOFORGE -> resolver.removeForwardingMod(serviceDir)
+                        else -> {}
+                    }
+                    proxyModMsg = "proxy forwarding mod removed"
+                }
+            }
+
+            val baseMsg = if (wasRunning) "Dedicated service '$name' updated (was running, stopped — restart to apply)"
+                          else "Dedicated service '$name' updated"
+            val msg = if (proxyModMsg != null) "$baseMsg, $proxyModMsg" else baseMsg
             call.respond(ApiMessage(true, msg))
         }
 

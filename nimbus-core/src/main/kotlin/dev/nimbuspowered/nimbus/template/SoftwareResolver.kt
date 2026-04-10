@@ -453,6 +453,24 @@ class SoftwareResolver {
     }
 
     /**
+     * Removes Forge/NeoForge proxy forwarding mods from a directory.
+     * Safe to call when the mods directory or the mod doesn't exist.
+     */
+    fun removeForwardingMod(templateDir: Path) {
+        val modsDir = templateDir.resolve("mods")
+        if (!modsDir.exists()) return
+        val removed = modsDir.toFile().listFiles()?.filter {
+            val name = it.name.lowercase()
+            (name.contains("proxy-compatible") || name.contains("bungeeforge")
+                || name.contains("neovelocity") || name.contains("neoforwarding"))
+                && name.endsWith(".jar")
+        } ?: emptyList()
+        for (file in removed) {
+            if (file.delete()) logger.info("Removed proxy forwarding mod: {}", file.name)
+        }
+    }
+
+    /**
      * Auto-downloads FabricProxy-Lite and its dependency Fabric API for Fabric servers.
      */
     suspend fun ensureFabricProxyMod(templateDir: Path, mcVersion: String) {
@@ -475,6 +493,23 @@ class SoftwareResolver {
         } ?: false
         if (!hasProxyMod) {
             downloadModrinthMod("fabricproxy-lite", "fabric", modsDir, "FabricProxy-Lite", mcVersion)
+        }
+    }
+
+    /**
+     * Removes FabricProxy-Lite from a directory. Fabric API is left in place
+     * because it's a general dependency used by many non-proxy mods.
+     */
+    fun removeFabricProxyMod(templateDir: Path) {
+        val modsDir = templateDir.resolve("mods")
+        if (!modsDir.exists()) return
+        val removed = modsDir.toFile().listFiles()?.filter {
+            val name = it.name.lowercase()
+            (name.contains("fabricproxy") || name.contains("proxy-lite"))
+                && name.endsWith(".jar")
+        } ?: emptyList()
+        for (file in removed) {
+            if (file.delete()) logger.info("Removed proxy forwarding mod: {}", file.name)
         }
     }
 
