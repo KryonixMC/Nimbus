@@ -19,12 +19,12 @@ import {
 } from "@/components/ui/chart";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { useServiceMetrics } from "@/lib/metrics";
-import { Play, Square, RotateCw, Send, ArrowLeft } from "lucide-react";
+import { Play, Square, RotateCw, Send, ArrowLeft } from "@/lib/icons";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { MemoryBar } from "@/components/memory-bar";
-import { Server, Plug, Users } from "lucide-react";
+import { Server, Plug, Users } from "@/lib/icons";
 
 interface ServiceDetail {
   name: string;

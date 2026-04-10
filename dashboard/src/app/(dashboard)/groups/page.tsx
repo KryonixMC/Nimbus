@@ -37,7 +37,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Trash2, Loader2, Package, FolderTreeIcon, Upload } from "lucide-react";
+import { Plus, Trash2, Loader2, Package, FolderTreeIcon, Upload } from "@/lib/icons";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 
 interface ModpackInfo {

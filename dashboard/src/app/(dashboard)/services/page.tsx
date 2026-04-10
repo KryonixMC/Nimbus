@@ -47,7 +47,7 @@ import {
   RotateCw,
   Plus,
   Server,
-} from "lucide-react";
+} from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { MemoryBar } from "@/components/memory-bar";

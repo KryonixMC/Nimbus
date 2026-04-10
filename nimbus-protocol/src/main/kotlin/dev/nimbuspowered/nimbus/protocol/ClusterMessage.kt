@@ -129,13 +129,25 @@ sealed class ClusterMessage {
         val currentServices: Int = 0,
         val agentVersion: String = "dev",
         val os: String = "",
-        val arch: String = ""
+        val arch: String = "",
+        // Host system specs (reported once at auth time — static for the lifetime of the agent)
+        val hostname: String = "",
+        val osVersion: String = "",
+        val cpuModel: String = "",
+        val availableProcessors: Int = 0,
+        val systemMemoryTotalMb: Long = 0,
+        val javaVersion: String = "",
+        val javaVendor: String = ""
     ) : ClusterMessage()
 
     @Serializable @SerialName("HEARTBEAT_RESPONSE")
     data class HeartbeatResponse(
         val timestamp: Long = System.currentTimeMillis(),
+        /** System-wide CPU load, 0.0–1.0 (-1 if unavailable). */
         val cpuUsage: Double = 0.0,
+        /** Agent JVM's own CPU load, 0.0–1.0 (-1 if unavailable). */
+        val processCpuLoad: Double = -1.0,
+        /** Total system memory in use, in MB (not just the agent JVM heap). */
         val memoryUsedMb: Long = 0,
         val memoryTotalMb: Long = 0,
         val services: List<ServiceHeartbeat> = emptyList()

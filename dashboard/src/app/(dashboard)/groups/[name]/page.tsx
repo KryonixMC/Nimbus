@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
-import { Save, ArrowLeft } from "lucide-react";
+import { Save, ArrowLeft } from "@/lib/icons";
 import Link from "next/link";
 import {
   Field,

@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { statusColors } from "@/lib/status";
 import { PlayerSheet } from "@/components/player-sheet";
-import { Search, Users, UserCheck, Server } from "lucide-react";
+import { Search, Users, UserCheck, Server } from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { EmptyState } from "@/components/empty-state";

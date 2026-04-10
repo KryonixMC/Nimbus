@@ -15,7 +15,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { EllipsisVerticalIcon, LogOutIcon, ServerIcon } from "lucide-react"
+import { EllipsisVerticalIcon, LogOutIcon, ServerIcon } from "@/lib/icons"
 import { useAuth } from "@/lib/auth"
 import { getApiUrl } from "@/lib/api"
 

@@ -4,13 +4,10 @@ import Image from "next/image"
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { InfoSheetTrigger } from "@/components/info-sheet"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -31,7 +28,7 @@ import {
   RadioIcon,
   BoxIcon,
   type LucideIcon,
-} from "lucide-react"
+} from "@/lib/icons"
 import Link from "next/link"
 import { useModules } from "@/lib/modules"
 
@@ -107,15 +104,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavDocuments items={moduleItems} />
       </SidebarContent>
       <SidebarFooter>
-        <SidebarGroup className="py-0">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <InfoSheetTrigger />
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
         <NavUser />
       </SidebarFooter>
     </Sidebar>

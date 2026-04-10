@@ -3,21 +3,17 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { statusColors } from "@/lib/status";
 import { toast } from "sonner";
-import { Network } from "lucide-react";
+import { Network } from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
+import {
+  SystemStatsCard,
+  type SystemInfo,
+} from "@/components/system-stats-card";
 
 interface Node {
   nodeId: string;
@@ -30,6 +26,7 @@ interface Node {
   memoryTotalMb: number;
   isConnected: boolean;
   agentVersion: string;
+  system: SystemInfo | null;
 }
 
 interface NodeListResponse {
@@ -42,12 +39,19 @@ export default function NodesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<NodeListResponse>("/api/nodes")
-      .then((data) => setNodes(data.nodes))
-      .catch((e) =>
-        toast.error(e instanceof Error ? e.message : "Failed to load nodes")
-      )
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const data = await apiFetch<NodeListResponse>("/api/nodes");
+        setNodes(data.nodes);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to load nodes");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -60,65 +64,63 @@ export default function NodesPage() {
       />
 
       {loading ? (
-        <Skeleton className="h-96 rounded-xl" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-80 rounded-xl" />
+          <Skeleton className="h-80 rounded-xl" />
+        </div>
       ) : nodes.length === 0 ? (
-        <EmptyState
-          icon={Network}
-          title="No cluster nodes"
-          description="This controller is running in single-node mode. Install an agent on another host to scale out."
-        />
-      ) : (
         <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Node ID</TableHead>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead className="text-right">Services</TableHead>
-                  <TableHead className="text-right">CPU</TableHead>
-                  <TableHead className="text-right">Memory</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {nodes.map((n) => (
-                  <TableRow key={n.nodeId}>
-                    <TableCell className="pl-6 font-medium">
-                      {n.nodeId}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {n.host}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          n.isConnected
-                            ? statusColors.online
-                            : statusColors.inactive
-                        }
-                      >
-                        {n.isConnected ? "Connected" : "Disconnected"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{n.agentVersion}</TableCell>
-                    <TableCell className="text-right">
-                      {n.currentServices}/{n.maxServices}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {n.cpuUsage.toFixed(0)}%
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {n.memoryUsedMb} / {n.memoryTotalMb} MB
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <CardContent className="p-6">
+            <EmptyState
+              icon={Network}
+              title="No cluster nodes"
+              description="This controller is running in single-node mode. Install an agent on another host to scale out."
+            />
           </CardContent>
         </Card>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {nodes.map((node) => (
+            <SystemStatsCard
+              key={node.nodeId}
+              title={node.nodeId}
+              subtitle={`${node.host} · ${node.currentServices}/${node.maxServices} services · budget ${node.maxMemory}`}
+              system={
+                node.system ?? {
+                  hostname: node.host,
+                  osName: "unknown",
+                  osVersion: "",
+                  osArch: "",
+                  cpuModel: "",
+                  availableProcessors: 0,
+                  systemCpuLoad: node.cpuUsage,
+                  processCpuLoad: -1,
+                  systemMemoryUsedMb: node.memoryUsedMb,
+                  systemMemoryTotalMb: node.memoryTotalMb,
+                  javaVersion: "",
+                  javaVendor: "",
+                }
+              }
+              headerRight={
+                <div className="flex flex-col items-end gap-1">
+                  <Badge
+                    variant="outline"
+                    className={
+                      node.isConnected
+                        ? statusColors.online
+                        : statusColors.inactive
+                    }
+                  >
+                    {node.isConnected ? "Connected" : "Disconnected"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    agent {node.agentVersion}
+                  </span>
+                </div>
+              }
+            />
+          ))}
+        </div>
       )}
     </>
   );

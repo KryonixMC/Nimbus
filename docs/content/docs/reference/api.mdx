@@ -756,6 +756,76 @@ Full cluster overview.
 
 ---
 
+### GET /api/controller/info
+
+Runtime stats for the controller itself, plus an update-check result. Used by the dashboard Overview page to render the "Controller host" and "Nimbus runtime" cards.
+
+**Response:**
+
+```json title="Response"
+{
+  "version": "0.6.2",
+  "startedAt": "2026-04-10T12:00:00Z",
+  "uptimeSeconds": 3600,
+  "jvmMemoryUsedMb": 180,
+  "jvmMemoryMaxMb": 256,
+  "jvmMemoryAllocatedMb": 200,
+  "servicesMaxMemoryMb": 8192,
+  "servicesAllocatedMemoryMb": 4096,
+  "servicesUsedMemoryMb": 3840,
+  "runningServices": 5,
+  "system": {
+    "hostname": "controller.internal",
+    "osName": "Linux",
+    "osVersion": "6.6.0-1008-oem",
+    "osArch": "amd64",
+    "cpuModel": "AMD Ryzen 9 5900X 12-Core Processor",
+    "availableProcessors": 24,
+    "systemCpuLoad": 0.18,
+    "processCpuLoad": 0.04,
+    "systemMemoryUsedMb": 12288,
+    "systemMemoryTotalMb": 32768,
+    "javaVersion": "21.0.5",
+    "javaVendor": "Eclipse Adoptium"
+  },
+  "updateAvailable": false,
+  "latestVersion": null,
+  "updateType": null,
+  "releaseUrl": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `jvmMemoryUsedMb` / `jvmMemoryMaxMb` | Long | Controller JVM heap (informational — the `nimbus-core` process itself) |
+| `servicesMaxMemoryMb` | Long | Memory budget for all services, from `controller.max_memory` in `nimbus.toml` |
+| `servicesAllocatedMemoryMb` | Long | Sum of configured `-Xmx` for currently running services |
+| `servicesUsedMemoryMb` | Long | Sum of actual process RSS for currently running services (best effort) |
+| `system` | Object | Host specs + live CPU/memory. Added in v0.6.2. Static fields (hostname, OS, CPU model) are read once and cached; `systemCpuLoad`, `processCpuLoad` and `systemMemoryUsedMb` are resampled on every request |
+| `updateAvailable` | Boolean | `true` when `UpdateChecker` found a newer release on GitHub. Never throws — any failure in the update check is silently ignored so this endpoint can't fail because GitHub is down |
+
+---
+
+### GET /api/controller/changelog
+
+Parses the docs changelog (`docs/content/docs/project/changelog.mdx` on GitHub `main`) into per-version entries. Results are cached on the controller for 5 minutes. Used by the dashboard "What's new" card.
+
+**Response:**
+
+```json title="Response"
+{
+  "entries": [
+    {
+      "version": "0.6.2",
+      "title": "v0.6.2 (April 10, 2026)",
+      "body": "### Added\n- **Controller host system stats**: ..."
+    }
+  ]
+}
+```
+
+---
+
 ### GET /api/players
 
 List all connected players. Pings each READY service in parallel via Server List Ping.
@@ -2018,15 +2088,39 @@ List all connected cluster nodes. Returns `404` if cluster mode is not enabled.
       "memoryUsedMb": 3200,
       "memoryTotalMb": 8192,
       "isConnected": true,
-      "agentVersion": "0.1.0",
+      "agentVersion": "0.6.2",
       "os": "Linux",
       "arch": "amd64",
-      "services": ["Lobby-2", "BedWars-1", "BedWars-2"]
+      "services": ["Lobby-2", "BedWars-1", "BedWars-2"],
+      "system": {
+        "hostname": "worker-1.internal",
+        "osName": "Linux",
+        "osVersion": "6.6.0-1008-oem",
+        "osArch": "amd64",
+        "cpuModel": "AMD Ryzen 9 5900X 12-Core Processor",
+        "availableProcessors": 24,
+        "systemCpuLoad": 0.42,
+        "processCpuLoad": 0.08,
+        "systemMemoryUsedMb": 3200,
+        "systemMemoryTotalMb": 8192,
+        "javaVersion": "21.0.5",
+        "javaVendor": "Eclipse Adoptium"
+      }
     }
   ],
   "total": 1
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cpuUsage` | Double | System-wide CPU load (0.0 – 1.0), pushed in the agent heartbeat. `-1` if unavailable |
+| `memoryUsedMb` / `memoryTotalMb` | Long | Host system memory (not agent JVM heap) |
+| `system` | Object | Static host specs reported at auth time plus live CPU/memory snapshot from the latest heartbeat. Available since v0.6.2 — null for older agents |
+| `system.systemCpuLoad` | Double | System-wide CPU load (0.0 – 1.0), `-1` if unavailable |
+| `system.processCpuLoad` | Double | Agent JVM's own CPU load (0.0 – 1.0), `-1` if unavailable |
+| `system.availableProcessors` | Int | Logical core count (`Runtime.availableProcessors()`) |
+| `system.cpuModel` | String | CPU model string read from `/proc/cpuinfo` on Linux, `PROCESSOR_IDENTIFIER` env on Windows |
 
 | Status Code | Description |
 |-------------|-------------|

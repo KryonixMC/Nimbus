@@ -178,10 +178,33 @@ data class ControllerInfoResponse(
     // Sum of actual process RSS for currently running services (best effort; Linux only)
     val servicesUsedMemoryMb: Long,
     val runningServices: Int,
+    // Host system stats — where the controller process itself is running
+    val system: SystemInfoResponse,
     val updateAvailable: Boolean,
     val latestVersion: String? = null,
     val updateType: String? = null,
     val releaseUrl: String? = null
+)
+
+/**
+ * Host system specs & live telemetry. Used for both the controller and cluster nodes.
+ * Static fields (os, cores, …) never change after startup; dynamic fields (cpuLoad, ramUsedMb)
+ * are refreshed on each request.
+ */
+@Serializable
+data class SystemInfoResponse(
+    val hostname: String,
+    val osName: String,
+    val osVersion: String,
+    val osArch: String,
+    val cpuModel: String,
+    val availableProcessors: Int,
+    val systemCpuLoad: Double,      // 0.0 – 1.0 (system-wide), -1 if unavailable
+    val processCpuLoad: Double,     // 0.0 – 1.0 (this JVM), -1 if unavailable
+    val systemMemoryUsedMb: Long,
+    val systemMemoryTotalMb: Long,
+    val javaVersion: String,
+    val javaVendor: String
 )
 
 @Serializable
@@ -553,7 +576,9 @@ data class NodeResponse(
     val agentVersion: String,
     val os: String,
     val arch: String,
-    val services: List<String>
+    val services: List<String>,
+    // Full host system info reported at auth time + latest heartbeat telemetry
+    val system: SystemInfoResponse? = null
 )
 
 @Serializable

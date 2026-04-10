@@ -17,7 +17,7 @@ import { statusColors } from "@/lib/status";
 import { toast } from "sonner";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
-import { Save, Plus, X } from "lucide-react";
+import { Save, Plus, X } from "@/lib/icons";
 
 // ── Types ──
 

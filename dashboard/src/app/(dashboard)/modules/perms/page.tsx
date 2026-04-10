@@ -46,7 +46,7 @@ import {
   Search,
   Shield,
   Users as UsersIcon,
-} from "lucide-react";
+} from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { SectionLabel } from "@/components/section-label";

@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { dotColors } from "@/lib/status";
 import { toast } from "sonner";
-import { Save, RefreshCw } from "lucide-react";
+import { Save, RefreshCw } from "@/lib/icons";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { PageHeader } from "@/components/page-header";
 
