@@ -22,11 +22,20 @@ class NodeConnection(
     @Volatile var lastHeartbeat: Long = System.currentTimeMillis()
     @Volatile var currentServices: Int = 0
     @Volatile var cpuUsage: Double = 0.0
+    @Volatile var processCpuLoad: Double = -1.0
     @Volatile var memoryUsedMb: Long = 0
     @Volatile var memoryTotalMb: Long = 0
     @Volatile var agentVersion: String = "dev"
     @Volatile var os: String = ""
     @Volatile var arch: String = ""
+    // Static host system specs (populated at auth time)
+    @Volatile var hostname: String = ""
+    @Volatile var osVersion: String = ""
+    @Volatile var cpuModel: String = ""
+    @Volatile var availableProcessors: Int = 0
+    @Volatile var systemMemoryTotalMb: Long = 0
+    @Volatile var javaVersion: String = ""
+    @Volatile var javaVendor: String = ""
 
     /** Remote service handles, keyed by service name */
     val remoteHandles = mutableMapOf<String, RemoteServiceHandle>()
@@ -38,9 +47,23 @@ class NodeConnection(
         }
     }
 
+    fun applyAuthInfo(auth: ClusterMessage.AuthRequest) {
+        agentVersion = auth.agentVersion
+        os = auth.os
+        arch = auth.arch
+        hostname = auth.hostname
+        osVersion = auth.osVersion
+        cpuModel = auth.cpuModel
+        availableProcessors = auth.availableProcessors
+        systemMemoryTotalMb = auth.systemMemoryTotalMb
+        javaVersion = auth.javaVersion
+        javaVendor = auth.javaVendor
+    }
+
     fun updateHeartbeat(response: ClusterMessage.HeartbeatResponse) {
         lastHeartbeat = System.currentTimeMillis()
         cpuUsage = response.cpuUsage
+        processCpuLoad = response.processCpuLoad
         memoryUsedMb = response.memoryUsedMb
         memoryTotalMb = response.memoryTotalMb
         currentServices = response.services.size

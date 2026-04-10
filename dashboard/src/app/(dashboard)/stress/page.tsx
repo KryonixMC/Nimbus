@@ -18,7 +18,7 @@ import { apiFetch } from "@/lib/api";
 import { statusColors } from "@/lib/status";
 import { toast } from "sonner";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
-import { Play, Square, Activity, Users, Gauge, Clock } from "lucide-react";
+import { Play, Square, Activity, Users, Gauge, Clock } from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 

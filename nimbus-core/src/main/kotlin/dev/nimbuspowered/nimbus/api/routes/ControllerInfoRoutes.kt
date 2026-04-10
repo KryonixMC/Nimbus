@@ -5,7 +5,9 @@ import dev.nimbuspowered.nimbus.api.ApiErrors
 import dev.nimbuspowered.nimbus.api.ChangelogEntry
 import dev.nimbuspowered.nimbus.api.ChangelogResponse
 import dev.nimbuspowered.nimbus.api.ControllerInfoResponse
+import dev.nimbuspowered.nimbus.api.SystemInfoResponse
 import dev.nimbuspowered.nimbus.api.apiError
+import dev.nimbuspowered.nimbus.system.SystemInfoCollector
 import dev.nimbuspowered.nimbus.cluster.NodeConnection
 import dev.nimbuspowered.nimbus.config.NimbusConfig
 import dev.nimbuspowered.nimbus.group.GroupManager
@@ -103,6 +105,7 @@ fun Route.controllerInfoRoutes(
                     servicesAllocatedMemoryMb = allocatedMb,
                     servicesUsedMemoryMb = usedMb,
                     runningServices = runningServices.size,
+                    system = SystemInfoCollector.collect(),
                     updateAvailable = updateAvailable,
                     latestVersion = latestVersion,
                     updateType = updateType,

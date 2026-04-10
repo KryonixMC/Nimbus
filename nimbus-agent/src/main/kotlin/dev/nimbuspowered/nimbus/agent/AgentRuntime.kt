@@ -95,7 +95,14 @@ class AgentRuntime(
                 currentServices = processManager.runningCount(),
                 agentVersion = AgentRuntime::class.java.`package`?.implementationVersion ?: "dev",
                 os = System.getProperty("os.name"),
-                arch = System.getProperty("os.arch")
+                arch = System.getProperty("os.arch"),
+                hostname = readHostname(),
+                osVersion = System.getProperty("os.version", ""),
+                cpuModel = readCpuModel(),
+                availableProcessors = Runtime.getRuntime().availableProcessors(),
+                systemMemoryTotalMb = getTotalMemoryMb(),
+                javaVersion = System.getProperty("java.version", ""),
+                javaVendor = System.getProperty("java.vendor", "")
             )
             send(Frame.Text(clusterJson.encodeToString(ClusterMessage.serializer(), authRequest)))
 
@@ -238,6 +245,7 @@ class AgentRuntime(
                 val response = ClusterMessage.HeartbeatResponse(
                     timestamp = System.currentTimeMillis(),
                     cpuUsage = getSystemCpuUsage(),
+                    processCpuLoad = getProcessCpuUsage(),
                     memoryUsedMb = getUsedMemoryMb(),
                     memoryTotalMb = getTotalMemoryMb(),
                     services = processManager.getServiceHeartbeats()
@@ -387,13 +395,29 @@ class AgentRuntime(
     private fun getSystemCpuUsage(): Double {
         return try {
             val osBean = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-            (osBean as? com.sun.management.OperatingSystemMXBean)?.cpuLoad ?: 0.0
-        } catch (_: Exception) { 0.0 }
+            (osBean as? com.sun.management.OperatingSystemMXBean)?.cpuLoad ?: -1.0
+        } catch (_: Exception) { -1.0 }
     }
 
+    private fun getProcessCpuUsage(): Double {
+        return try {
+            val osBean = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+            (osBean as? com.sun.management.OperatingSystemMXBean)?.processCpuLoad ?: -1.0
+        } catch (_: Exception) { -1.0 }
+    }
+
+    /**
+     * Used system memory, in MB. NOT the agent JVM heap — that would be misleading on
+     * the Nodes page where we want to see how much physical RAM is in use on the host.
+     */
     private fun getUsedMemoryMb(): Long {
-        val runtime = Runtime.getRuntime()
-        return (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024
+        return try {
+            val osBean = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                as? com.sun.management.OperatingSystemMXBean ?: return 0
+            val total = osBean.totalMemorySize
+            val free = osBean.freeMemorySize
+            ((total - free).coerceAtLeast(0)) / 1024 / 1024
+        } catch (_: Exception) { 0 }
     }
 
     private fun getTotalMemoryMb(): Long {
@@ -401,5 +425,30 @@ class AgentRuntime(
             val osBean = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
             ((osBean as? com.sun.management.OperatingSystemMXBean)?.totalMemorySize ?: 0) / 1024 / 1024
         } catch (_: Exception) { 0 }
+    }
+
+    private fun readHostname(): String {
+        return try {
+            java.net.InetAddress.getLocalHost().hostName
+        } catch (_: Exception) {
+            System.getenv("HOSTNAME") ?: System.getenv("COMPUTERNAME") ?: "unknown"
+        }
+    }
+
+    private fun readCpuModel(): String {
+        val cpuInfo = java.nio.file.Path.of("/proc/cpuinfo")
+        if (java.nio.file.Files.exists(cpuInfo)) {
+            try {
+                val line = java.nio.file.Files.lines(cpuInfo).use { stream ->
+                    stream.filter { it.startsWith("model name") }.findFirst().orElse(null)
+                }
+                if (line != null) {
+                    val parts = line.split(":", limit = 2)
+                    if (parts.size == 2) return parts[1].trim()
+                }
+            } catch (_: Exception) { /* fall through */ }
+        }
+        return System.getenv("PROCESSOR_IDENTIFIER")
+            ?: System.getProperty("os.arch", "unknown")
     }
 }

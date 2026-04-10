@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { apiWebSocketReconnect } from "@/lib/api";
 import { statusColors } from "@/lib/status";
 import { AnsiLine } from "@/components/ansi-line";
-import { Send } from "lucide-react";
+import { Send } from "@/lib/icons";
 import { PageHeader } from "@/components/page-header";
 
 let messageId = 0;

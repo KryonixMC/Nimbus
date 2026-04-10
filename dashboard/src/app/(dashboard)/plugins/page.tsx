@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
-import { Search, Download, PackageSearch } from "lucide-react";
+import { Search, Download, PackageSearch } from "@/lib/icons";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";

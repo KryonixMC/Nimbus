@@ -56,7 +56,7 @@ import {
   Upload,
   Loader2,
   Pencil,
-} from "lucide-react";
+} from "@/lib/icons";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 
 interface DedicatedService {

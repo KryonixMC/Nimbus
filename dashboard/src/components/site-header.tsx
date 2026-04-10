@@ -13,6 +13,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 /**
  * Breadcrumb labels, mirrored from `app-sidebar.tsx` so that the breadcrumb
@@ -86,6 +87,9 @@ export function SiteHeader() {
             )}
           </BreadcrumbList>
         </Breadcrumb>
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   )

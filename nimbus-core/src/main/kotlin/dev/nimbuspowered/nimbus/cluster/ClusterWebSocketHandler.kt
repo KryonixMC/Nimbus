@@ -64,7 +64,7 @@ class ClusterWebSocketHandler(
                         logger.info("Cleared {} stale remote handles from reconnecting node '{}'", staleHandles.size, nodeId)
                     }
                     existingNode.reconnect(this)
-                    existingNode.agentVersion = authMsg.agentVersion
+                    existingNode.applyAuthInfo(authMsg)
                     logger.info("Node '{}' reconnected from {}", nodeId, host)
                 } else {
                     val connection = NodeConnection(
@@ -74,9 +74,7 @@ class ClusterWebSocketHandler(
                         maxServices = authMsg.maxServices,
                         session = this
                     )
-                    connection.agentVersion = authMsg.agentVersion
-                    connection.os = authMsg.os
-                    connection.arch = authMsg.arch
+                    connection.applyAuthInfo(authMsg)
                     nodeManager.registerNode(connection)
                 }
 

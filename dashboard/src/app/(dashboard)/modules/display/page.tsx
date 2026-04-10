@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Save, Signpost } from "lucide-react";
+import { Save, Signpost } from "@/lib/icons";
 import { MinecraftSign } from "@/components/minecraft-sign";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";

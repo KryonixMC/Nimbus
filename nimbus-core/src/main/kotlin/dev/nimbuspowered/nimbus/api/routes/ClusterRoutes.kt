@@ -22,6 +22,20 @@ fun Route.clusterRoutes(
         }
         val nodes = nodeManager.getAllNodes().map { node ->
             val nodeServices = registry.getAll().filter { it.nodeId == node.nodeId }
+            val sys = SystemInfoResponse(
+                hostname = node.hostname,
+                osName = node.os,
+                osVersion = node.osVersion,
+                osArch = node.arch,
+                cpuModel = node.cpuModel,
+                availableProcessors = node.availableProcessors,
+                systemCpuLoad = node.cpuUsage,
+                processCpuLoad = node.processCpuLoad,
+                systemMemoryUsedMb = node.memoryUsedMb,
+                systemMemoryTotalMb = if (node.systemMemoryTotalMb > 0) node.systemMemoryTotalMb else node.memoryTotalMb,
+                javaVersion = node.javaVersion,
+                javaVendor = node.javaVendor
+            )
             NodeResponse(
                 nodeId = node.nodeId,
                 host = node.host,
@@ -35,7 +49,8 @@ fun Route.clusterRoutes(
                 agentVersion = node.agentVersion,
                 os = node.os,
                 arch = node.arch,
-                services = nodeServices.map { it.name }
+                services = nodeServices.map { it.name },
+                system = sys
             )
         }
         call.respond(NodeListResponse(nodes, nodes.size))

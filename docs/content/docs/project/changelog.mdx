@@ -9,6 +9,32 @@ All notable changes to Nimbus, organized by release. Each entry links to the cor
 
 ---
 
+## v0.6.3 (April 10, 2026)
+
+Overview-first dashboard: host system telemetry, cluster nodes get the full picture, and every icon swapped to Phosphor Regular.
+
+### Added
+- **Controller host system stats**: new `SystemInfoCollector` (`nimbus-core/.../system/SystemInfoCollector.kt`) reads OS name/version, CPU model + core count, live system CPU load, process CPU load, system RAM used/total, Java version/vendor and hostname from the host the controller is running on. Exposed as a nested `system` object on `GET /api/controller/info` (new `SystemInfoResponse` DTO), with static fields (hostname, CPU model) cached for the JVM lifetime
+- **Cluster protocol system specs**: `AuthRequest` extended with `hostname`, `osVersion`, `cpuModel`, `availableProcessors`, `systemMemoryTotalMb`, `javaVersion`, `javaVendor`. `HeartbeatResponse` gained `processCpuLoad`. Agents report all of this at auth time, `NodeConnection` persists the static fields and the controller passes them through as `NodeResponse.system` so the dashboard Nodes page shows the same rich telemetry for every remote agent
+- **Overview page rebuilt around host telemetry**: new `<SystemStatsCard>` component renders CPU bar (system + process), memory bar, and a specs grid (hostname, OS, arch, Java). The controller host card sits next to a new Nimbus runtime card (services memory budget + JVM heap + uptime/started), with the update-available banner and a "What's new" accordion below. All of this replaces the old sidebar `<InfoSheet>` slide-out, which is gone
+- **"What's new" card on Overview**: collapsible accordion (closed by default) showing only the latest release's notes inline, with a "Full changelog" button linking directly to [cloud.nimbuspowered.org/docs/project/changelog](https://cloud.nimbuspowered.org/docs/project/changelog). Lazy-fetches `/api/controller/changelog` on first expand instead of on every Overview mount
+- **Nodes page rebuilt as a grid of `<SystemStatsCard>`**: two-column card grid (one per node) replaces the old 7-column table. Each card shows CPU + memory bars, OS / arch / cores / Java, connected/disconnected badge and agent version. Auto-refreshes every 5 s
+- **Light/dark theme toggle**: `next-themes`-powered `<ThemeProvider>` wired into the root layout with a `<ThemeToggle>` button in the site header. Respects system preference by default, remembers the last choice
+- **Phosphor Icons across the dashboard**: all 51 unique icons across 21 dashboard files migrated from `lucide-react` to `@phosphor-icons/react` at the Regular weight via a new central `src/lib/icons.tsx` wrapper module. Call sites only needed an import-path swap — every JSX usage stayed untouched
+
+### Changed
+- **Agent heartbeat reports real system memory**: `getUsedMemoryMb()` on the agent was returning the agent JVM's own heap usage (via `Runtime.getRuntime()`) while `memoryTotalMb` reported system-wide total, producing nonsensical percentages on the Nodes page (e.g. 40 MB / 32 GB). Now uses `osBean.totalMemorySize - osBean.freeMemorySize` consistently, so "memory used" and "memory total" are both system-wide and comparable
+- **Status card on Overview**: removed the `CircleDot` indicator in front of "Online" / "Offline" — the `StatCard`'s `tone="primary|destructive"` prop already color-codes the whole tile, so the extra dot was redundant
+
+### Fixed
+- **Base UI `Button` crash when rendering an anchor**: `<Button render={<a>...</a>} />` threw at runtime with `"nativeButton is true"` because Base UI's `Button` primitive defaults `nativeButton: true` and expects a real `<button>` element. Added `nativeButton={false}` to the two sites that render an anchor through `Button`: the changelog card's "Full changelog" link and the Overview update banner's "View release" link
+
+### Removed
+- **`dashboard/src/components/info-sheet.tsx`**: the old sidebar slide-out is replaced by the inline Overview cards. The sidebar footer no longer has an "Info" button
+- **v0.6.3 version bump** in `gradle.properties`
+
+---
+
 ## v0.6.1 (April 10, 2026)
 
 Dashboard design-system pass, historical memory charts and an audit-log fix.
