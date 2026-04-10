@@ -200,7 +200,7 @@ export function InfoSheetTrigger() {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-6">
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 pb-4 space-y-6">
           {loadingInfo && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" /> Loading stats...
