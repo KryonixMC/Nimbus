@@ -85,10 +85,21 @@ class ServiceManager(
         val group = groupManager.getGroup(groupName)
         val memory = group?.config?.group?.resources?.memory ?: "1G"
         val placement = group?.config?.group?.placement
+        val syncEnabled = group?.config?.group?.sync?.enabled == true
 
-        // Resolve placement: explicit pin > any-node (dynamic only) > local (static fallback).
+        if (syncEnabled && !placement?.node.isNullOrBlank() && placement.node != "local") {
+            logger.warn(
+                "Group '{}' has both sync.enabled=true and placement.node='{}' — these are mutually exclusive. " +
+                "Sync wins (service will float between nodes, canonical data on controller).",
+                groupName, placement.node
+            )
+        }
+
+        // Resolve placement: sync services always float (any-node), otherwise
+        // explicit pin > any-node (dynamic only) > local (static fallback).
         // Pinned placement applies to BOTH static and dynamic groups.
         val remoteNode: dev.nimbuspowered.nimbus.cluster.NodeConnection? = when {
+            syncEnabled -> nodeManager?.selectNode(memory)
             placement?.node == "local" -> null
             !placement?.node.isNullOrBlank() -> {
                 val pinned = nodeManager?.getNode(placement.node)
@@ -291,7 +302,9 @@ class ServiceManager(
             },
             javaVersion = javaResolver.requiredJavaVersion(groupConfig.version, groupConfig.software),
             bedrockPort = service.bedrockPort ?: 0,
-            bedrockEnabled = config.bedrock.enabled && groupConfig.software == dev.nimbuspowered.nimbus.config.ServerSoftware.VELOCITY
+            bedrockEnabled = config.bedrock.enabled && groupConfig.software == dev.nimbuspowered.nimbus.config.ServerSoftware.VELOCITY,
+            syncEnabled = groupConfig.sync.enabled,
+            syncExcludes = groupConfig.sync.excludes
         )
     }
 

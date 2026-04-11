@@ -1,5 +1,6 @@
 package dev.nimbuspowered.nimbus.cluster
 
+import dev.nimbuspowered.nimbus.api.routes.stateRoutes
 import dev.nimbuspowered.nimbus.api.routes.templateRoutes
 import dev.nimbuspowered.nimbus.config.ClusterConfig
 import dev.nimbuspowered.nimbus.event.EventBus
@@ -25,7 +26,8 @@ class ClusterServer(
     private val handler: ClusterWebSocketHandler,
     private val templatesDir: Path,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val stateSyncManager: dev.nimbuspowered.nimbus.service.StateSyncManager? = null
 ) {
     private val logger = LoggerFactory.getLogger(ClusterServer::class.java)
 
@@ -125,6 +127,9 @@ class ClusterServer(
         routing {
             with(handler) { clusterRoutes() }
             templateRoutes(templatesDir, config.token)
+            if (stateSyncManager != null) {
+                stateRoutes(stateSyncManager, config.token)
+            }
         }
     }
 

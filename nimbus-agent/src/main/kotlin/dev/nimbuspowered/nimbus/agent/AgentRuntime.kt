@@ -21,7 +21,6 @@ class AgentRuntime(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val javaResolver = JavaResolver(config.java.toMap(), baseDir)
     private val stateStore = AgentStateStore(baseDir)
-    private val processManager = LocalProcessManager(baseDir, scope, javaResolver, stateStore)
     private val trustManager = TlsHelper.resolveTrustManager(config.agent).also { tm ->
         when {
             config.agent.trustedFingerprint.isNotBlank() ->
@@ -32,12 +31,20 @@ class AgentRuntime(
             tm == null -> logger.info("TLS: using system default truststore")
         }
     }
+    private val controllerRestBaseUrl: String =
+        config.agent.controller.replace("ws://", "http://").replace("wss://", "https://").removeSuffix("/cluster")
     private val templateDownloader = TemplateDownloader(
         baseDir.resolve("templates"),
-        config.agent.controller.replace("ws://", "http://").replace("wss://", "https://").removeSuffix("/cluster"),
+        controllerRestBaseUrl,
         config.agent.token,
         trustManager
     )
+    private val stateSyncClient = StateSyncClient(
+        controllerRestBaseUrl,
+        config.agent.token,
+        trustManager
+    )
+    private val processManager = LocalProcessManager(baseDir, scope, javaResolver, stateStore, stateSyncClient)
     private val client = run {
         val tm = trustManager
         HttpClient(CIO) {

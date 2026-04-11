@@ -63,7 +63,8 @@ class NimbusApi(
     private val databaseManager: dev.nimbuspowered.nimbus.database.DatabaseManager? = null,
     private val softwareResolver: dev.nimbuspowered.nimbus.template.SoftwareResolver? = null,
     private val dedicatedServiceManager: dev.nimbuspowered.nimbus.service.DedicatedServiceManager? = null,
-    private val dedicatedDir: Path? = null
+    private val dedicatedDir: Path? = null,
+    private val stateSyncManager: dev.nimbuspowered.nimbus.service.StateSyncManager? = null
 ) {
     private val logger = LoggerFactory.getLogger(NimbusApi::class.java)
 
@@ -339,6 +340,12 @@ class NimbusApi(
             // Cluster bootstrap: public cert material gated by cluster token.
             // Must be outside auth blocks because agents call this before they trust TLS.
             clusterBootstrapRoutes(config.cluster, clusterServer)
+
+            // State sync endpoints: agents pull/push canonical service state here.
+            // Gated by cluster token, same as template downloads.
+            if (stateSyncManager != null) {
+                stateRoutes(stateSyncManager, config.cluster.token)
+            }
 
             // Remote CLI console routes (WebSocket + REST, master token only)
             if (dispatcher != null) {

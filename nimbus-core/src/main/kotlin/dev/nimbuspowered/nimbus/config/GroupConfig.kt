@@ -48,7 +48,8 @@ data class GroupDefinition(
     val scaling: ScalingConfig = ScalingConfig(),
     val lifecycle: LifecycleConfig = LifecycleConfig(),
     val jvm: JvmConfig = JvmConfig(),
-    val placement: PlacementConfig = PlacementConfig()
+    val placement: PlacementConfig = PlacementConfig(),
+    val sync: SyncConfig = SyncConfig()
 ) {
     /**
      * Returns the effective list of templates. If [templates] is set, it is used directly.
@@ -123,4 +124,34 @@ data class JvmConfig(
 data class PlacementConfig(
     val node: String = "",
     val fallback: String = "wait"
+)
+
+/**
+ * State sync policy for a group. When enabled, the controller keeps the canonical
+ * copy of the service's working directory in `services/state/<name>/` and the agent
+ * pulls from it on start and pushes back on graceful stop. This allows unpinned
+ * services to move between nodes while preserving data across restarts.
+ *
+ * Data loss model: if a service **crashes** instead of stopping gracefully, all
+ * changes since the last push are lost. For zero-loss guarantees, use pinning
+ * (`[group.placement] node = "<id>"`) instead.
+ *
+ * Mutual exclusion: setting both `sync.enabled = true` AND `placement.node` is
+ * nonsensical and logged as a warning at startup. Sync wins (service floats).
+ *
+ * Excludes are rsync-style glob patterns (trailing `/` = directory, `*.ext` =
+ * extension). Matched files are neither uploaded nor deleted during reconcile.
+ */
+@Serializable
+data class SyncConfig(
+    val enabled: Boolean = false,
+    val excludes: List<String> = listOf(
+        "logs/",
+        "cache/",
+        "crash-reports/",
+        "*.tmp",
+        "*.lock",
+        "*.pid",
+        "session.lock"
+    )
 )
