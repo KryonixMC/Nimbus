@@ -47,7 +47,8 @@ data class GroupDefinition(
     val resources: ResourcesConfig = ResourcesConfig(),
     val scaling: ScalingConfig = ScalingConfig(),
     val lifecycle: LifecycleConfig = LifecycleConfig(),
-    val jvm: JvmConfig = JvmConfig()
+    val jvm: JvmConfig = JvmConfig(),
+    val placement: PlacementConfig = PlacementConfig()
 ) {
     /**
      * Returns the effective list of templates. If [templates] is set, it is used directly.
@@ -100,4 +101,26 @@ data class LifecycleConfig(
 data class JvmConfig(
     val args: List<String> = emptyList(),
     val optimize: Boolean = true
+)
+
+/**
+ * Placement policy for services in a group.
+ *
+ *   node = ""         → any available node (default scheduler behavior)
+ *   node = "local"    → force controller-local (used for services that MUST stay local)
+ *   node = "<id>"     → pin to a specific agent node by its node_name
+ *
+ *   fallback = "local" | "wait" | "fail"
+ *     local: fall back to controller if the pinned node is offline
+ *            (NOTE: only safe for stateless groups — stateful data stays on the node!)
+ *     wait:  don't start until the pinned node is available (default for pinned services)
+ *     fail:  refuse to start with an error
+ *
+ * For STATIC and DEDICATED services pinned to a node, `fallback = "wait"` is strongly
+ * recommended — falling back to the controller creates divergent data on two hosts.
+ */
+@Serializable
+data class PlacementConfig(
+    val node: String = "",
+    val fallback: String = "wait"
 )

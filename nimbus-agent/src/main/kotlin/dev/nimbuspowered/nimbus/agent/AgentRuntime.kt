@@ -167,9 +167,15 @@ class AgentRuntime(
             }
             logger.info("Authenticated with controller as '{}'", config.agent.nodeName)
 
-            // Notify controller about recovered services
-            if (recoveredServices.isNotEmpty()) {
-                for (svc in recoveredServices) {
+            // Full service sync: on every (re)auth, tell the controller exactly which
+            // services are alive on this node. Covers three cases in one code path:
+            //   1. Fresh agent startup with recovered services from state store.
+            //   2. Reconnect to the same controller after a transient WS drop.
+            //   3. Reconnect after controller restart — controller has lost its in-memory
+            //      registry and needs the agent to re-seed it.
+            val running = processManager.getRunningServices()
+            if (running.isNotEmpty()) {
+                for (svc in running) {
                     send(Frame.Text(clusterJson.encodeToString(ClusterMessage.serializer(),
                         ClusterMessage.ServiceStateChanged(
                             serviceName = svc.serviceName,
@@ -180,9 +186,9 @@ class AgentRuntime(
                         )
                     )))
                 }
-                logger.info("Notified controller about {} recovered service(s)", recoveredServices.size)
-                recoveredServices = emptyList()
+                logger.info("Synced {} running service(s) with controller", running.size)
             }
+            recoveredServices = emptyList()
 
             // Message loop
             for (frame in incoming) {

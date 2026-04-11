@@ -142,6 +142,27 @@ class LocalProcessManager(
         }.toMap()
     }
 
+    /**
+     * Returns all currently-running services with enough metadata for the controller
+     * to rebuild its registry after a restart. Pulled from the persisted state store
+     * (for groupName / port) joined with the live [handles] map (for liveness / pid).
+     *
+     * Called from the runtime after every (re)authentication with the controller.
+     */
+    fun getRunningServices(): List<RecoveredService> {
+        val persisted = stateStore.load().services.associateBy { it.serviceName }
+        return handles.mapNotNull { (name, handle) ->
+            if (!handle.isAlive()) return@mapNotNull null
+            val meta = persisted[name] ?: return@mapNotNull null
+            RecoveredService(
+                serviceName = name,
+                groupName = meta.groupName,
+                port = meta.port,
+                pid = handle.pid() ?: meta.pid
+            )
+        }
+    }
+
     fun getServiceHeartbeats(): List<ServiceHeartbeat> {
         return handles.map { (name, handle) ->
             val pid = handle.pid() ?: 0

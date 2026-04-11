@@ -82,18 +82,46 @@ class ServiceManager(
     )
 
     suspend fun startService(groupName: String): Service? {
+        val group = groupManager.getGroup(groupName)
+        val memory = group?.config?.group?.resources?.memory ?: "1G"
+        val placement = group?.config?.group?.placement
+
+        // Resolve placement: explicit pin > any-node (dynamic only) > local (static fallback).
+        // Pinned placement applies to BOTH static and dynamic groups.
+        val remoteNode: dev.nimbuspowered.nimbus.cluster.NodeConnection? = when {
+            placement?.node == "local" -> null
+            !placement?.node.isNullOrBlank() -> {
+                val pinned = nodeManager?.getNode(placement.node)
+                if (pinned != null && pinned.isConnected) {
+                    pinned
+                } else {
+                    when (placement.fallback.lowercase()) {
+                        "local" -> {
+                            logger.warn("Group '{}' pinned to node '{}' which is offline — falling back to local", groupName, placement.node)
+                            null
+                        }
+                        "fail" -> {
+                            logger.error("Group '{}' pinned to node '{}' which is offline (fallback=fail) — refusing to start", groupName, placement.node)
+                            return null
+                        }
+                        else -> {
+                            // "wait" or unknown → refuse to start, scaling engine will retry later
+                            logger.warn("Group '{}' pinned to node '{}' which is offline — waiting for node", groupName, placement.node)
+                            return null
+                        }
+                    }
+                }
+            }
+            // No explicit pin: static → local, dynamic → any available node
+            else -> if (group?.isStatic == true) null else nodeManager?.selectNode(memory)
+        }
+
         // Try warm pool first for instant start
         val prepared = warmPoolManager?.take(groupName)
             ?: serviceFactory.prepare(groupName)
             ?: return null
         val (service, workDir, command, readyPattern, isModded, readyTimeout) = prepared
         val serviceName = service.name
-
-        // Check if we should start on a remote node
-        // Static services always run on the controller (persistent data in services/static/)
-        val group = groupManager.getGroup(groupName)
-        val memory = group?.config?.group?.resources?.memory ?: "1G"
-        val remoteNode = if (service.isStatic) null else nodeManager?.selectNode(memory)
 
         if (remoteNode != null) {
             return startRemoteService(service, prepared, remoteNode, group)
@@ -112,6 +140,18 @@ class ServiceManager(
                 logger.warn("Dedicated service '{}' is already running (state: {})", config.name, existing.state)
                 return null
             }
+        }
+
+        // Remote placement for dedicated services is not yet supported — the controller
+        // would need to ship the full dedicated directory (not just a template) to the
+        // agent, which requires the binary file-transfer subsystem. For now, warn and
+        // fall back to local. Config field is preserved for forward compatibility.
+        if (config.placement.node.isNotBlank() && config.placement.node != "local") {
+            logger.warn(
+                "Dedicated service '{}' has placement.node='{}' but remote dedicated placement " +
+                "is not yet implemented — running locally on the controller.",
+                config.name, config.placement.node
+            )
         }
 
         val prepared = serviceFactory.prepareDedicated(config) ?: return null
