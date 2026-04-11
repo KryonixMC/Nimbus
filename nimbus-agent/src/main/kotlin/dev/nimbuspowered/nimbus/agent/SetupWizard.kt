@@ -16,8 +16,9 @@ class SetupWizard(private val baseDir: Path) {
         println("  ──────────────────────────────")
         println()
 
-        print("  Controller URL [ws://127.0.0.1:8443/cluster]: ")
-        val controller = reader.readLine()?.trim()?.ifEmpty { "ws://127.0.0.1:8443/cluster" }
+        print("  Controller URL [wss://127.0.0.1:8443/cluster]: ")
+        val controller = reader.readLine()?.trim()?.ifEmpty { "wss://127.0.0.1:8443/cluster" }
+            ?.let { if (it.startsWith("ws://")) "wss://" + it.removePrefix("ws://") else it }
             ?: return null
 
         print("  Auth Token: ")

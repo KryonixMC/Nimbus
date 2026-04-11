@@ -327,11 +327,11 @@ object ConsoleFormatter {
 
     fun banner(networkName: String): String = buildString {
         appendLine()
-        appendLine("""$BLUE   _  __ __ _   __ ___  _ __  ___$RESET""")
-        appendLine("""$BRIGHT_BLUE  / |/ // // \,' // o.)/// /,' _/$RESET""")
-        appendLine("""$CYAN / || // // \,' // o \/ U /_\ `. $RESET""")
-        appendLine("""$BRIGHT_CYAN/_/|_//_//_/ /_//___,'\_,'/___,' $RESET""")
-        appendLine("${DIM}            C L O U D$RESET")
+        appendLine("""$BLUE   _  ________  ______  __  ______$RESET""")
+        appendLine("""$BRIGHT_BLUE  / |/ /  _/  |/  / _ )/ / / / __/$RESET""")
+        appendLine("""$CYAN /    // // /|_/ / _  / /_/ /\ \  $RESET""")
+        appendLine("""$BRIGHT_CYAN/_/|_/___/_/  /_/____/\____/___/  $RESET""")
+        appendLine("${DIM}C L O U D$RESET")
         appendLine()
         if (networkName.isNotEmpty()) {
             appendLine("${DIM}Network:${RESET}  ${BOLD}$networkName${RESET}")
