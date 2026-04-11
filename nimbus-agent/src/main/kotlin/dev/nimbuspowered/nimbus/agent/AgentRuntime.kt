@@ -22,36 +22,29 @@ class AgentRuntime(
     private val javaResolver = JavaResolver(config.java.toMap(), baseDir)
     private val stateStore = AgentStateStore(baseDir)
     private val processManager = LocalProcessManager(baseDir, scope, javaResolver, stateStore)
+    private val trustManager = TlsHelper.resolveTrustManager(config.agent).also { tm ->
+        when {
+            config.agent.trustedFingerprint.isNotBlank() ->
+                logger.info("TLS: pinning controller cert by SHA-256 fingerprint ({}...)",
+                    config.agent.trustedFingerprint.take(23))
+            config.agent.truststorePath.isNotBlank() ->
+                logger.info("TLS: using custom truststore at {}", config.agent.truststorePath)
+            tm == null -> logger.info("TLS: using system default truststore")
+        }
+    }
     private val templateDownloader = TemplateDownloader(
         baseDir.resolve("templates"),
         config.agent.controller.replace("ws://", "http://").replace("wss://", "https://").removeSuffix("/cluster"),
-        config.agent.token
+        config.agent.token,
+        trustManager
     )
-    private val client = HttpClient(CIO) {
-        install(WebSockets)
-        engine {
-            https {
-                when {
-                    config.agent.trustedFingerprint.isNotBlank() -> {
-                        // Preferred path: SSH-style fingerprint pinning
-                        trustManager = TlsHelper.pinnedTrustManager(config.agent.trustedFingerprint)
-                        logger.info(
-                            "TLS: pinning controller cert by SHA-256 fingerprint ({})",
-                            config.agent.trustedFingerprint.take(23) + "..."
-                        )
-                    }
-                    config.agent.truststorePath.isNotBlank() -> {
-                        val ts = TlsHelper.loadTrustStore(config.agent.truststorePath, config.agent.truststorePassword)
-                        trustManager = TlsHelper.trustManagerFor(ts)
-                        logger.info("TLS: using custom truststore at {}", config.agent.truststorePath)
-                    }
-                    !config.agent.tlsVerify -> {
-                        trustManager = TlsHelper.trustAllManager()
-                        logger.warn("TLS verification disabled — accepting all certificates (DEV ONLY, MITM-vulnerable)")
-                    }
-                    else -> {
-                        logger.info("TLS: using system default truststore")
-                    }
+    private val client = run {
+        val tm = trustManager
+        HttpClient(CIO) {
+            install(WebSockets)
+            engine {
+                https {
+                    if (tm != null) this.trustManager = tm
                 }
             }
         }

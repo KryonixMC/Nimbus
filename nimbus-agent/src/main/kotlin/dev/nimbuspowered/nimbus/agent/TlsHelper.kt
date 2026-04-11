@@ -1,5 +1,6 @@
 package dev.nimbuspowered.nimbus.agent
 
+import io.ktor.client.engine.cio.*
 import org.slf4j.LoggerFactory
 import java.io.FileInputStream
 import java.nio.file.Path
@@ -11,6 +12,33 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 object TlsHelper {
+
+    /**
+     * Resolves the TrustManager that should be used for all HTTPS/WSS connections
+     * from the agent to the controller. Precedence:
+     *   trusted_fingerprint > truststore > system CAs (null) > trust-all (when tls_verify=false).
+     *
+     * Returning null means "use the JDK default truststore".
+     */
+    fun resolveTrustManager(agent: AgentDefinition): X509TrustManager? {
+        val log = LoggerFactory.getLogger(TlsHelper::class.java)
+        return when {
+            agent.trustedFingerprint.isNotBlank() -> {
+                log.debug("Using pinned fingerprint trust manager")
+                pinnedTrustManager(agent.trustedFingerprint)
+            }
+            agent.truststorePath.isNotBlank() -> {
+                log.debug("Using custom truststore at {}", agent.truststorePath)
+                trustManagerFor(loadTrustStore(agent.truststorePath, agent.truststorePassword))
+            }
+            !agent.tlsVerify -> {
+                log.warn("TLS verification disabled — accepting all certificates (DEV ONLY, MITM-vulnerable)")
+                trustAllManager()
+            }
+            else -> null
+        }
+    }
+
 
     private val logger = LoggerFactory.getLogger(TlsHelper::class.java)
 

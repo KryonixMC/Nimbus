@@ -124,9 +124,15 @@ class SetupWizard(private val baseDir: Path) {
     /**
      * Attempts GET /api/cluster/bootstrap on the controller with the cluster token.
      * Returns null on any failure (logged with an actionable hint).
+     *
+     * Transient errors (controller still booting) auto-retry silently with a 1s
+     * backoff for the first [AUTO_RETRY_ATTEMPTS] tries, then fall back to an
+     * interactive prompt. Keeps the wizard off the REST API rate limiter.
      */
     private fun tryBootstrap(reader: BufferedReader, restUrl: String, token: String): BootstrapInfo? {
+        var attempts = 0
         while (true) {
+            attempts++
             val result = runBlocking {
                 val client = HttpClient(CIO) {
                     install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -163,11 +169,23 @@ class SetupWizard(private val baseDir: Path) {
                     return null
                 }
                 is BootstrapResult.ClusterDown -> {
-                    println("  ✗ Controller reached, but cluster mode is not enabled or TLS is off.")
-                    println("    Details: ${result.body.take(200)}")
-                    return null
+                    if (attempts <= AUTO_RETRY_ATTEMPTS) {
+                        println("  … cluster server still booting, retrying in 1s (attempt $attempts/$AUTO_RETRY_ATTEMPTS)")
+                        Thread.sleep(1000)
+                        continue
+                    }
+                    println("  ✗ Controller reached, but cluster server is not ready:")
+                    println("    ${result.body.take(200)}")
+                    print("    Try again? [Y/n]: ")
+                    val retry = reader.readLine()?.trim()?.lowercase()
+                    if (retry == "n" || retry == "no") return null
                 }
                 is BootstrapResult.Unreachable -> {
+                    if (attempts <= AUTO_RETRY_ATTEMPTS) {
+                        println("  … controller not reachable, retrying in 1s (attempt $attempts/$AUTO_RETRY_ATTEMPTS)")
+                        Thread.sleep(1000)
+                        continue
+                    }
                     println("  ✗ Could not reach controller at $restUrl: ${result.reason}")
                     print("    Try again? [Y/n]: ")
                     val retry = reader.readLine()?.trim()?.lowercase()
@@ -179,6 +197,11 @@ class SetupWizard(private val baseDir: Path) {
                 }
             }
         }
+    }
+
+    private companion object {
+        // ~30s of silent retries covers both controller cold-start + cluster boot.
+        const val AUTO_RETRY_ATTEMPTS = 30
     }
 
     @Serializable
