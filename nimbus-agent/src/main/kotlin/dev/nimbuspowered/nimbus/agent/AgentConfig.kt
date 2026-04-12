@@ -25,12 +25,22 @@ data class AgentDefinition(
     val maxMemory: String = "8G",
     @SerialName("max_services")
     val maxServices: Int = 10,
+    @SerialName("trusted_fingerprint")
+    val trustedFingerprint: String = "",
     @SerialName("tls_verify")
     val tlsVerify: Boolean = true,
     @SerialName("truststore_path")
     val truststorePath: String = "",
     @SerialName("truststore_password")
-    val truststorePassword: String = ""
+    val truststorePassword: String = "",
+    /**
+     * Publicly reachable IP/hostname the controller's proxy should use to connect
+     * to backends on this node. Leave blank to auto-pick the first non-APIPA,
+     * non-loopback, non-link-local IPv4 interface. Set explicitly if the agent
+     * runs behind NAT or has multiple interfaces (e.g. Tailscale + LAN).
+     */
+    @SerialName("public_host")
+    val publicHost: String = ""
 )
 
 @Serializable
@@ -87,10 +97,21 @@ object AgentConfigLoader {
             appendLine("max_services = ${config.agent.maxServices}")
             appendLine()
             appendLine("# TLS settings for connecting to the controller.")
-            appendLine("# Set tls_verify = false to trust self-signed certificates (dev only).")
+            appendLine("# trusted_fingerprint: SHA-256 fingerprint of the controller's TLS cert.")
+            appendLine("#   Set by the setup wizard via the /api/cluster/bootstrap endpoint.")
+            appendLine("#   Takes precedence over truststore_path and system CAs.")
+            appendLine("trusted_fingerprint = \"${config.agent.trustedFingerprint}\"")
+            appendLine("# tls_verify: set to false to trust any cert (DEV ONLY, MITM-vulnerable).")
             appendLine("tls_verify = ${config.agent.tlsVerify}")
+            appendLine("# truststore_path / truststore_password: advanced, for CA-issued certs.")
             appendLine("truststore_path = \"${config.agent.truststorePath}\"")
             appendLine("truststore_password = \"${config.agent.truststorePassword}\"")
+            appendLine()
+            appendLine("# public_host: IP/hostname the controller's proxy should route players to")
+            appendLine("# when they connect to backends on this node. Leave blank to auto-pick a")
+            appendLine("# routable IPv4 from a real LAN interface. Set explicitly if the agent runs")
+            appendLine("# behind NAT or has multiple interfaces (e.g. Tailscale + LAN).")
+            appendLine("public_host = \"${config.agent.publicHost}\"")
             appendLine()
             appendLine("# Optional: specify paths to Java installations.")
             appendLine("# Leave empty for auto-detection / auto-download from Adoptium.")

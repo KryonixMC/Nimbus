@@ -18,6 +18,13 @@ class NodeManager(
     private val logger = LoggerFactory.getLogger(NodeManager::class.java)
     private val nodes = ConcurrentHashMap<String, NodeConnection>()
 
+    /**
+     * Late-bound failover hook. Invoked after a node is marked failed with the list
+     * of service names that were running on it. ServiceManager wires this to
+     * handle re-placement of restart-on-crash services on surviving nodes.
+     */
+    var onNodeFailover: (suspend (nodeId: String, affectedServiceNames: List<String>) -> Unit) = { _, _ -> }
+
     val placementStrategy: PlacementStrategy = when (config.placementStrategy.lowercase()) {
         "least-memory" -> LeastMemoryPlacement()
         "round-robin" -> RoundRobinPlacement()
@@ -92,15 +99,48 @@ class NodeManager(
     /**
      * Handles a node failure. Services on the failed node are marked CRASHED
      * and the scaling engine will restart them (possibly on different nodes).
+     * Idempotent — safe to call multiple times for the same node.
      */
     private suspend fun handleNodeFailure(nodeId: String) {
+        // Idempotency guard: if the node was already removed, nothing to do.
+        if (nodes[nodeId] == null) return
         val affectedServices = registry.getAll().filter { it.nodeId == nodeId }
+        val affectedNames = affectedServices.map { it.name }
         for (service in affectedServices) {
-            service.transitionTo(dev.nimbuspowered.nimbus.service.ServiceState.CRASHED)
-            eventBus.emit(NimbusEvent.ServiceCrashed(service.name, -1, service.restartCount))
+            if (service.state != dev.nimbuspowered.nimbus.service.ServiceState.CRASHED) {
+                service.transitionTo(dev.nimbuspowered.nimbus.service.ServiceState.CRASHED)
+                eventBus.emit(NimbusEvent.ServiceCrashed(service.name, -1, service.restartCount))
+            }
         }
         unregisterNode(nodeId)
         logger.error("Node '{}' failed — {} service(s) affected", nodeId, affectedServices.size)
+        // Hand off to ServiceManager for re-placement on surviving nodes.
+        try {
+            onNodeFailover(nodeId, affectedNames)
+        } catch (e: Exception) {
+            logger.error("Failover handler for node '{}' threw", nodeId, e)
+        }
+    }
+
+    /**
+     * Called from the WS close handler when a node's WebSocket drops (clean or error).
+     * Schedules a delayed failure check: if the node hasn't reconnected within
+     * [ClusterConfig.nodeTimeout] ms, its services are marked CRASHED.
+     *
+     * This complements the heartbeat-timeout path in [startHeartbeatLoop] for the
+     * case where an agent process is killed hard — the WS closes but no heartbeat
+     * timeout is observed because the loop skips disconnected nodes.
+     */
+    fun scheduleFailureCheck(nodeId: String) {
+        scope.launch {
+            delay(config.nodeTimeout)
+            val node = nodes[nodeId]
+            if (node != null && !node.isConnected) {
+                logger.warn("Node '{}' did not reconnect within {}ms — marking services CRASHED",
+                    nodeId, config.nodeTimeout)
+                handleNodeFailure(nodeId)
+            }
+        }
     }
 
     fun getNodeCount(): Int = nodes.size

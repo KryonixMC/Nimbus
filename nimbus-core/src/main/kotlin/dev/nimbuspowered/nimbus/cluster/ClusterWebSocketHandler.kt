@@ -52,7 +52,12 @@ class ClusterWebSocketHandler(
                 }
 
                 nodeId = authMsg.nodeName
-                val host = (call.request.local.remoteAddress ?: "unknown")
+                // Prefer the agent's self-reported public_host (filtered for a routable
+                // IPv4) over the socket-derived peer address — the latter often picks
+                // a Hyper-V vEthernet or APIPA interface on Windows, which breaks
+                // backend routing from the proxy.
+                val host = authMsg.publicHost.takeIf { it.isNotBlank() }
+                    ?: (call.request.local.remoteAddress ?: "unknown")
 
                 // Check for reconnection
                 val existingNode = nodeManager.getNode(nodeId)
@@ -66,6 +71,19 @@ class ClusterWebSocketHandler(
                     existingNode.reconnect(this)
                     existingNode.applyAuthInfo(authMsg)
                     logger.info("Node '{}' reconnected from {}", nodeId, host)
+
+                    // Reconcile registry against the agent's authoritative list: any
+                    // service we thought was on this node but the agent doesn't claim
+                    // is gone (agent restart with wiped state, orphan sweep killed it,
+                    // or manual cleanup). Purge them so the slot frees up and scaling
+                    // can re-place on another node.
+                    val agentHas = authMsg.runningServices.toSet()
+                    val stale = registry.getAll().filter { it.nodeId == nodeId && it.name !in agentHas }
+                    for (svc in stale) {
+                        logger.warn("Reconcile: purging '{}' — controller had it on '{}', agent doesn't", svc.name, nodeId)
+                        registry.unregister(svc.name)
+                        portAllocator?.release(svc.port)
+                    }
                 } else {
                     val connection = NodeConnection(
                         nodeId = nodeId,
@@ -100,6 +118,10 @@ class ClusterWebSocketHandler(
                         node.markDisconnected()
                         // Emit disconnect event immediately (node stays registered for reconnection)
                         eventBus.emit(dev.nimbuspowered.nimbus.event.NimbusEvent.NodeDisconnected(nodeId))
+                        // Schedule a failure check: if the node doesn't reconnect within
+                        // node_timeout, its services will be marked CRASHED so the scaling
+                        // engine can respawn them elsewhere.
+                        nodeManager.scheduleFailureCheck(nodeId)
                     }
                 }
             }
@@ -131,23 +153,46 @@ class ClusterWebSocketHandler(
                 }
             }
             is ClusterMessage.ServiceStateChanged -> {
-                val service = registry.get(message.serviceName)
+                val existing = registry.get(message.serviceName)
+                val newState = ServiceState.valueOf(message.state)
+
+                // Reconcile stale terminal state: after a controller restart or transient
+                // disconnect the controller may still see a service as CRASHED/STOPPED
+                // while the agent actually has it running. When the agent re-syncs and
+                // reports READY/STARTING, unregister the stale entry and let the
+                // "unknown service" branch below re-register it fresh.
+                val service = if (
+                    existing != null &&
+                    (existing.state == ServiceState.CRASHED || existing.state == ServiceState.STOPPED) &&
+                    (newState == ServiceState.READY || newState == ServiceState.STARTING)
+                ) {
+                    logger.info("Reconciling ghost entry '{}': controller had {} but agent reports {}",
+                        message.serviceName, existing.state, newState)
+                    registry.unregister(message.serviceName)
+                    null
+                } else existing
+
                 if (service != null) {
-                    val newState = ServiceState.valueOf(message.state)
-                    service.transitionTo(newState)
+                    val actuallyTransitioned = service.transitionTo(newState)
                     service.pid = message.pid
 
-                    // Forward to remote handle for waitForReady etc
+                    // Forward to remote handle for waitForReady etc (always, even if
+                    // the state machine rejected the transition — the handle still
+                    // needs to unblock any waiters)
                     val handle = node.remoteHandles[message.serviceName]
                     handle?.onStateChanged(message.state, message.pid)
 
-                    // Emit events (READY is emitted by ServiceManager after waitForReady)
-                    when (newState) {
-                        ServiceState.STOPPED -> eventBus.emit(
-                            dev.nimbuspowered.nimbus.event.NimbusEvent.ServiceStopped(message.serviceName))
-                        ServiceState.CRASHED -> eventBus.emit(
-                            dev.nimbuspowered.nimbus.event.NimbusEvent.ServiceCrashed(message.serviceName, -1, 0))
-                        else -> {}
+                    // Only emit events if the state actually changed. Prevents duplicate
+                    // CRASHED events when multiple paths (heartbeat timeout, WS close,
+                    // exit monitor) all notice the same failure.
+                    if (actuallyTransitioned) {
+                        when (newState) {
+                            ServiceState.STOPPED -> eventBus.emit(
+                                dev.nimbuspowered.nimbus.event.NimbusEvent.ServiceStopped(message.serviceName))
+                            ServiceState.CRASHED -> eventBus.emit(
+                                dev.nimbuspowered.nimbus.event.NimbusEvent.ServiceCrashed(message.serviceName, -1, 0))
+                            else -> {}
+                        }
                     }
                 } else if (message.state == "READY" || message.state == "STARTING") {
                     val group = groupManager?.getGroup(message.groupName)

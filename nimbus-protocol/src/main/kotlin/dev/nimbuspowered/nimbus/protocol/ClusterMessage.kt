@@ -53,13 +53,29 @@ sealed class ClusterMessage {
         val nimbusProperties: Map<String, String> = emptyMap(),
         val javaVersion: Int = 0,
         val bedrockPort: Int = 0,
-        val bedrockEnabled: Boolean = false
+        val bedrockEnabled: Boolean = false,
+        /** When true, agent pulls canonical state from controller before start and pushes back on graceful stop. */
+        val syncEnabled: Boolean = false,
+        /** rsync-style exclude globs applied to both pull and push. Files matching these are never synced. */
+        val syncExcludes: List<String> = emptyList(),
+        /** Dedicated service (single-instance, persistent data, no template). */
+        val isDedicated: Boolean = false
     ) : ClusterMessage()
 
     @Serializable @SerialName("STOP_SERVICE")
     data class StopService(
         val serviceName: String,
         val timeoutSeconds: Int = 30
+    ) : ClusterMessage()
+
+    /**
+     * Tell an agent to delete a cached sync workdir for a service it no longer hosts.
+     * Sent by the controller after a successful migration / failover re-placement so
+     * the source node doesn't hoard stale state.
+     */
+    @Serializable @SerialName("DISCARD_SYNC_WORKDIR")
+    data class DiscardSyncWorkdir(
+        val serviceName: String
     ) : ClusterMessage()
 
     @Serializable @SerialName("SEND_COMMAND")
@@ -137,7 +153,21 @@ sealed class ClusterMessage {
         val availableProcessors: Int = 0,
         val systemMemoryTotalMb: Long = 0,
         val javaVersion: String = "",
-        val javaVendor: String = ""
+        val javaVendor: String = "",
+        /**
+         * Publicly reachable address the controller's proxy should use when routing
+         * players to backends on this node. Set from [cluster] public_host in agent.toml,
+         * or picked automatically from a non-APIPA / non-loopback interface. The controller
+         * overrides the socket-derived peer address with this if non-empty.
+         */
+        val publicHost: String = "",
+        /**
+         * Authoritative list of services actively running on this agent at the time
+         * of auth. Used by the controller to reconcile its registry after a reconnect:
+         * any service pinned to this node in the controller's registry but missing
+         * from this list is purged. Sending an empty list means "I have no services".
+         */
+        val runningServices: List<String> = emptyList()
     ) : ClusterMessage()
 
     @Serializable @SerialName("HEARTBEAT_RESPONSE")

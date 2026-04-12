@@ -169,6 +169,7 @@ fun nimbusMain() = runBlocking {
     val templatesDir = baseDir.resolve(config.paths.templates)
     val servicesDir = baseDir.resolve(config.paths.services)
     val staticDir = servicesDir.resolve("static")
+    val stateDir = servicesDir.resolve("state")
     val tempDir = servicesDir.resolve("temp")
     val logsDir = baseDir.resolve(config.paths.logs)
 
@@ -181,7 +182,7 @@ fun nimbusMain() = runBlocking {
     val proxyDir = modulesDir.resolve("syncproxy")
 
     listOf(
-        templatesDir, staticDir, tempDir, logsDir, configDir, groupsDir, dedicatedDir, dedicatedServicesDir, modulesDir, proxyDir,
+        templatesDir, staticDir, stateDir, tempDir, logsDir, configDir, groupsDir, dedicatedDir, dedicatedServicesDir, modulesDir, proxyDir,
         globalTemplateDir, globalTemplateDir.resolve("plugins"),
         globalProxyTemplateDir, globalProxyTemplateDir.resolve("plugins")
     ).forEach { dir ->
@@ -308,6 +309,24 @@ fun nimbusMain() = runBlocking {
         JwtTokenManager(config.api.token)
     } else null
 
+    // State sync: controller holds the canonical copy of services with sync enabled.
+    // Group-based services live in services/state/<name>/, dedicated services reuse
+    // their existing canonical location at dedicated/<name>/ — the resolver routes
+    // based on whether a matching dedicated config exists.
+    val stateSyncManager = dev.nimbuspowered.nimbus.service.StateSyncManager(
+        stateRoot = stateDir,
+        customRootResolver = { serviceName ->
+            if (dedicatedServiceManager.getConfig(serviceName) != null) {
+                dedicatedServicesDir.resolve(serviceName)
+            } else null
+        },
+        diskQuotaBytes = config.cluster.syncDiskQuotaBytes,
+        extraQuotaRoots = listOf(dedicatedServicesDir)
+    )
+    // Wipe orphaned staging dirs from previous unclean shutdowns (both the state
+    // root for group-sync services and the dedicated dir for dedicated-sync services)
+    stateSyncManager.cleanupStaleStaging(extraRoots = listOf(dedicatedServicesDir))
+
     // Create service manager
     val serviceManager = ServiceManager(
         config = config,
@@ -323,6 +342,11 @@ fun nimbusMain() = runBlocking {
         stateStore = controllerStateStore,
         jwtTokenManager = jwtTokenManager
     )
+
+    // Wire node-failover callback — runs re-placement for services on dead nodes.
+    nodeManager?.onNodeFailover = { nodeId, names ->
+        serviceManager.handleNodeFailover(nodeId, names)
+    }
 
     // Wire dedicated service manager into service manager and factory
     serviceManager.dedicatedServiceManager = dedicatedServiceManager
@@ -385,7 +409,7 @@ fun nimbusMain() = runBlocking {
     } else null
 
     val clusterServer: dev.nimbuspowered.nimbus.cluster.ClusterServer? = if (clusterWsHandler != null) {
-        dev.nimbuspowered.nimbus.cluster.ClusterServer(config.cluster, clusterWsHandler, templatesDir, eventBus, scope)
+        dev.nimbuspowered.nimbus.cluster.ClusterServer(config.cluster, clusterWsHandler, templatesDir, eventBus, scope, stateSyncManager)
     } else null
 
     // Create REST API (started after console.init() so events are visible)
@@ -401,6 +425,7 @@ fun nimbusMain() = runBlocking {
         groupsDir = groupsDir,
         configPath = configPath,
         nodeManager = nodeManager,
+        clusterServer = clusterServer,
         loadBalancer = loadBalancer,
         templatesDir = templatesDir,
         stressTestManager = stressTestManager,
@@ -410,7 +435,8 @@ fun nimbusMain() = runBlocking {
         databaseManager = databaseManager,
         softwareResolver = softwareResolver,
         dedicatedServiceManager = dedicatedServiceManager,
-        dedicatedDir = dedicatedDir
+        dedicatedDir = dedicatedDir,
+        stateSyncManager = stateSyncManager
     )
 
     // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)
@@ -421,15 +447,20 @@ fun nimbusMain() = runBlocking {
             logger.info("Shutdown signal received, stopping all services...")
             lbJob?.cancel()
             heartbeatJob?.cancel()
-            clusterServer?.stop()
-            // Send ShutdownAgent to all nodes
+            // Send ShutdownAgent to every node BEFORE stopping the cluster server —
+            // otherwise the send queue is closed and agents never learn they should
+            // stop their children, leaving orphan backends on the other machines.
             if (nodeManager != null) {
                 for (node in nodeManager.getAllNodes()) {
                     try {
-                        runBlocking { node.send(ClusterMessage.ShutdownAgent()) }
+                        node.send(ClusterMessage.ShutdownAgent())
                     } catch (_: Exception) {}
                 }
+                // Give agents a moment to actually receive + process the message
+                // before we tear down the WebSocket listener.
+                try { kotlinx.coroutines.delay(500) } catch (_: Exception) {}
             }
+            clusterServer?.stop()
             auditCollector?.shutdown()
             metricsCollector.shutdown()
             metricsJobs.forEach { it.cancel() }
@@ -461,6 +492,7 @@ fun nimbusMain() = runBlocking {
         api = api,
         proxySyncManager = proxySyncManager,
         nodeManager = nodeManager,
+        clusterServer = clusterServer,
         loadBalancer = loadBalancer,
         configPath = configPath,
         stressTestManager = stressTestManager,
@@ -525,17 +557,9 @@ fun nimbusMain() = runBlocking {
     }
 
     // Start minimum instances for all groups (auto-downloads JARs if missing)
-    // This runs phased: proxy first (waits for READY), then backends.
+    // This runs phased: proxy first (waits for READY), then backends, then
+    // dedicated services. All three startup phases live in startMinimumInstances.
     serviceManager.startMinimumInstances()
-
-    // Start dedicated services after group services
-    for (cfg in dedicatedServiceManager.getAllConfigs()) {
-        try {
-            serviceManager.startDedicatedService(cfg.dedicated)
-        } catch (e: Exception) {
-            logger.error("Failed to start dedicated service '{}': {}", cfg.dedicated.name, e.message)
-        }
-    }
 
     // Start scaling engine AFTER initial boot completes — prevents the engine from
     // racing the phased startup (e.g. starting backends before the proxy is ready).
@@ -552,15 +576,18 @@ fun nimbusMain() = runBlocking {
     if (shutdownStarted.compareAndSet(false, true)) {
         lbJob?.cancel()
         heartbeatJob?.cancel()
-        clusterServer?.stop()
-        // Send ShutdownAgent to all nodes
+        // Send ShutdownAgent to every node BEFORE stopping the cluster server —
+        // otherwise the send queue is closed and agents never learn they should
+        // stop their children, leaving orphan backends.
         if (nodeManager != null) {
             for (node in nodeManager.getAllNodes()) {
                 try {
                     node.send(ClusterMessage.ShutdownAgent())
                 } catch (_: Exception) {}
             }
+            try { kotlinx.coroutines.delay(500) } catch (_: Exception) {}
         }
+        clusterServer?.stop()
         auditCollector?.shutdown()
         metricsJobs.forEach { it.cancel() }
         updaterJob.cancel()

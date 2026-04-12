@@ -3,6 +3,9 @@ package dev.nimbuspowered.nimbus.agent
 import dev.nimbuspowered.nimbus.protocol.ClusterMessage
 import dev.nimbuspowered.nimbus.protocol.ServiceHeartbeat
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,7 +19,11 @@ class LocalProcessManager(
     private val baseDir: Path,
     private val scope: CoroutineScope,
     private val javaResolver: JavaResolver,
-    private val stateStore: AgentStateStore
+    private val stateStore: AgentStateStore,
+    private val stateSyncClient: StateSyncClient? = null,
+    /** Agent node name, stamped into spawned backend cmdlines so orphan sweeps
+     *  can identify which agent instance owns a given process. */
+    private val ownerNodeName: String = "agent"
 ) {
     private val logger = LoggerFactory.getLogger(LocalProcessManager::class.java)
     private val handles = ConcurrentHashMap<String, LocalProcessHandle>()
@@ -26,26 +33,76 @@ class LocalProcessManager(
     fun runningCount(): Int = handles.count { it.value.isAlive() }
 
     suspend fun startService(msg: ClusterMessage.StartService): Boolean {
+        // Duplicate StartService for the same service: either the controller retried
+        // a still-in-flight start (race with scaling tick) or the old process is stuck.
+        // Kill whatever's there so we don't leak a process holding Paper's session.lock,
+        // which would make every subsequent spawn fail with DirectoryLock IOException.
+        val existing = handles[msg.serviceName]
+        if (existing != null) {
+            logger.warn("StartService '{}' received while a previous handle exists — destroying old one",
+                msg.serviceName)
+            try {
+                existing.destroy()
+            } catch (_: Exception) {}
+            handles.remove(msg.serviceName)
+        }
+        // Also sweep any leftover java.exe with a matching -Dnimbus.service.name=<name>
+        // from a prior agent process (we were killed and the Paper outlived us).
+        killOrphanProcesses(msg.serviceName)
+
         return try {
             val templatesDir = baseDir.resolve("templates")
             val servicesDir = baseDir.resolve("services")
             val resolvedTemplates = msg.templateNames.ifEmpty { listOf(msg.templateName) }
 
-            val workDir = if (msg.isStatic) {
-                servicesDir.resolve("static").resolve(msg.serviceName)
-            } else {
-                val uuid = UUID.randomUUID().toString().replace("-", "").take(8)
-                servicesDir.resolve("temp").resolve("${msg.serviceName}_$uuid")
+            // Work dir layout by service type:
+            //   dedicated        → services/dedicated/<name>/ (stable, pulled from canonical)
+            //   sync-enabled     → services/sync/<name>/      (stable, pulled/pushed)
+            //   static           → services/static/<name>/    (stable, template-copied)
+            //   else (dynamic)   → services/temp/<name>_<uuid>/ (ephemeral, template-copied)
+            val workDir = when {
+                msg.isDedicated -> servicesDir.resolve("dedicated").resolve(msg.serviceName)
+                msg.syncEnabled -> servicesDir.resolve("sync").resolve(msg.serviceName)
+                msg.isStatic -> servicesDir.resolve("static").resolve(msg.serviceName)
+                else -> {
+                    val uuid = UUID.randomUUID().toString().replace("-", "").take(8)
+                    servicesDir.resolve("temp").resolve("${msg.serviceName}_$uuid")
+                }
             }
             workDir.createDirectories()
 
-            // Copy template stack to work dir (first = base, rest = overlays)
-            val primaryDir = templatesDir.resolve(resolvedTemplates.first())
-            copyTemplate(primaryDir, workDir, msg.isStatic)
-            for (tmpl in resolvedTemplates.drop(1)) {
-                val overlayDir = templatesDir.resolve(tmpl)
-                if (overlayDir.exists()) {
-                    copyTemplate(overlayDir, workDir, preserveExisting = false)
+            // State sync pull: if enabled, try to pull canonical state first.
+            // Dedicated services MUST pull — there's no template to fall back to,
+            // so if the pull returns false (empty canonical), error out.
+            val pulledFromCanonical = if (msg.syncEnabled && stateSyncClient != null) {
+                try {
+                    stateSyncClient.pull(msg.serviceName, workDir, msg.syncExcludes)
+                } catch (e: Exception) {
+                    logger.error("State sync pull failed for '{}': {}", msg.serviceName, e.message)
+                    false
+                }
+            } else false
+
+            if (msg.isDedicated && !pulledFromCanonical) {
+                logger.error(
+                    "Dedicated service '{}' cannot start: controller has no canonical state. " +
+                    "The initial dedicated/{}/ must exist on the controller before remote placement.",
+                    msg.serviceName, msg.serviceName
+                )
+                return false
+            }
+
+            // Copy template stack if we didn't pull from canonical.
+            // Dedicated never uses templates. For group-sync services, template copy
+            // runs only on the first start ever.
+            if (!pulledFromCanonical && !msg.isDedicated) {
+                val primaryDir = templatesDir.resolve(resolvedTemplates.first())
+                copyTemplate(primaryDir, workDir, preserveExisting = msg.isStatic || msg.syncEnabled)
+                for (tmpl in resolvedTemplates.drop(1)) {
+                    val overlayDir = templatesDir.resolve(tmpl)
+                    if (overlayDir.exists()) {
+                        copyTemplate(overlayDir, workDir, preserveExisting = false)
+                    }
                 }
             }
 
@@ -89,7 +146,21 @@ class LocalProcessManager(
             workDirs[msg.serviceName] = workDir
             if (msg.isStatic) staticServices.add(msg.serviceName)
 
-            // Persist state for crash recovery
+            // Write a pid marker to the workdir so the orphan sweep can find this
+            // process even after an unclean agent restart on Windows, where
+            // java.lang.ProcessHandle.info().commandLine() often returns empty.
+            try {
+                val pid = handle.pid() ?: 0L
+                if (pid > 0) {
+                    java.nio.file.Files.writeString(
+                        workDir.resolve(".nimbus-owner"),
+                        "pid=$pid\nservice=${msg.serviceName}\nowner=$ownerNodeName\nstartedAt=${System.currentTimeMillis()}\n"
+                    )
+                }
+            } catch (_: Exception) {}
+
+            // Persist state for crash recovery (includes sync metadata so reconnected
+            // agents know to push on stop even across restarts)
             stateStore.addService(PersistedService(
                 serviceName = msg.serviceName,
                 groupName = msg.groupName,
@@ -100,7 +171,10 @@ class LocalProcessManager(
                 templateName = msg.templateName,
                 software = msg.software,
                 memory = msg.memory,
-                startedAtEpochMs = System.currentTimeMillis()
+                startedAtEpochMs = System.currentTimeMillis(),
+                syncEnabled = msg.syncEnabled,
+                syncExcludes = msg.syncExcludes,
+                isDedicated = msg.isDedicated
             ))
 
             logger.info("Started service '{}' on port {}", msg.serviceName, msg.port)
@@ -115,6 +189,10 @@ class LocalProcessManager(
         val handle = handles[serviceName] ?: return
         handle.stopGracefully(timeoutSeconds.seconds)
         handle.destroy()
+
+        // State sync push before we forget the service's metadata
+        pushStateIfEnabled(serviceName)
+
         handles.remove(serviceName)
         stateStore.removeService(serviceName)
     }
@@ -142,6 +220,27 @@ class LocalProcessManager(
         }.toMap()
     }
 
+    /**
+     * Returns all currently-running services with enough metadata for the controller
+     * to rebuild its registry after a restart. Pulled from the persisted state store
+     * (for groupName / port) joined with the live [handles] map (for liveness / pid).
+     *
+     * Called from the runtime after every (re)authentication with the controller.
+     */
+    fun getRunningServices(): List<RecoveredService> {
+        val persisted = stateStore.load().services.associateBy { it.serviceName }
+        return handles.mapNotNull { (name, handle) ->
+            if (!handle.isAlive()) return@mapNotNull null
+            val meta = persisted[name] ?: return@mapNotNull null
+            RecoveredService(
+                serviceName = name,
+                groupName = meta.groupName,
+                port = meta.port,
+                pid = handle.pid() ?: meta.pid
+            )
+        }
+    }
+
     fun getServiceHeartbeats(): List<ServiceHeartbeat> {
         return handles.map { (name, handle) ->
             val pid = handle.pid() ?: 0
@@ -157,25 +256,162 @@ class LocalProcessManager(
         }
     }
 
-    /** Reads resident set size for a process on Linux via /proc. Returns 0 on failure. */
+    private val agentIsWindows by lazy {
+        System.getProperty("os.name")?.lowercase()?.contains("windows") == true
+    }
+
+    /**
+     * Resident set size (RSS) for a process, in MB.
+     *
+     *  - Linux / WSL: reads `/proc/<pid>/status` (VmRSS field).
+     *  - Windows: shells out to `tasklist /FI "PID eq <pid>" /FO CSV /NH`.
+     *  - Other OSes: returns 0.
+     *
+     * Same two-path implementation as the controller's ProcessMemoryReader —
+     * the agent module can't depend on core so it's duplicated here.
+     */
     private fun readRssMb(pid: Long): Long {
-        val statusFile = java.nio.file.Paths.get("/proc/$pid/status")
-        if (!java.nio.file.Files.exists(statusFile)) return 0
-        return try {
-            var rssKb = 0L
-            java.nio.file.Files.lines(statusFile).use { lines ->
-                lines.filter { it.startsWith("VmRSS:") }.findFirst().ifPresent { line ->
-                    val parsed = line.substringAfter("VmRSS:").trim().removeSuffix("kB").trim().toLongOrNull()
-                    if (parsed != null) rssKb = parsed
+        if (pid <= 0) return 0
+        val procStatus = java.nio.file.Paths.get("/proc/$pid/status")
+        if (java.nio.file.Files.exists(procStatus)) {
+            return try {
+                var rssKb = 0L
+                java.nio.file.Files.lines(procStatus).use { lines ->
+                    lines.filter { it.startsWith("VmRSS:") }.findFirst().ifPresent { line ->
+                        val parsed = line.substringAfter("VmRSS:").trim().removeSuffix("kB").trim().toLongOrNull()
+                        if (parsed != null) rssKb = parsed
+                    }
                 }
+                rssKb / 1024
+            } catch (_: Exception) {
+                0
             }
-            rssKb / 1024
+        }
+        if (agentIsWindows) return readRssMbFromTasklist(pid)
+        return 0
+    }
+
+    private fun readRssMbFromTasklist(pid: Long): Long {
+        return try {
+            val process = ProcessBuilder("tasklist", "/FI", "PID eq $pid", "/FO", "CSV", "/NH")
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText().trim()
+            if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return 0
+            }
+            if (output.isEmpty() || output.startsWith("INFO")) return 0
+            // CSV format: "java.exe","12345","Console","1","1,234,567 K"
+            val fields = output.split(Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"))
+                .map { it.trim().removePrefix("\"").removeSuffix("\"") }
+            val memField = fields.lastOrNull() ?: return 0
+            val kb = memField.removeSuffix("K").trim().replace(",", "").replace(".", "").toLongOrNull() ?: return 0
+            kb / 1024
         } catch (_: Exception) {
             0
         }
     }
 
+    /**
+     * Kills any live java.exe process whose command line contains
+     * `-Dnimbus.service.name=<name>` and which isn't currently adopted by this
+     * agent. These are orphans left behind when a previous agent instance was
+     * killed without cleanly stopping its children — they still hold Paper's
+     * `world/session.lock` and will prevent any new spawn from starting up.
+     *
+     * Uses `java.lang.ProcessHandle.allProcesses()` so it works on both Linux
+     * and Windows without shelling out.
+     */
+    fun killOrphanProcesses(serviceName: String? = null) {
+        val adoptedPids = handles.values.mapNotNull { it.pid() }.toSet()
+        logger.info("Orphan sweep starting (serviceFilter={}, ownerTag={})",
+            serviceName ?: "<any>", ownerNodeName)
+        // Walk all service workdirs and look for .nimbus-owner marker files. Each
+        // marker records the PID that was spawned for that workdir. If the PID is
+        // still alive and we didn't adopt it, it's an orphan from a previous run.
+        //
+        // This beats relying on java.lang.ProcessHandle.info().commandLine(), which
+        // returns an empty Optional on Windows for processes the current user can't
+        // read the PEB of (reparented children of a dead agent).
+        val servicesDir = baseDir.resolve("services")
+        val candidateRoots = listOf(
+            servicesDir.resolve("sync"),
+            servicesDir.resolve("static"),
+            servicesDir.resolve("dedicated"),
+            servicesDir.resolve("temp")
+        )
+        var scanned = 0
+        var killed = 0
+        for (root in candidateRoots) {
+            if (!root.exists()) continue
+            try {
+                java.nio.file.Files.list(root).use { stream ->
+                    stream.forEach { wd ->
+                        val marker = wd.resolve(".nimbus-owner")
+                        if (!marker.exists()) return@forEach
+                        scanned++
+                        try {
+                            val lines = java.nio.file.Files.readAllLines(marker)
+                                .associate { line -> line.substringBefore("=") to line.substringAfter("=", "") }
+                            val pid = lines["pid"]?.toLongOrNull() ?: return@forEach
+                            val markerService = lines["service"] ?: ""
+                            val markerOwner = lines["owner"] ?: ""
+                            if (markerOwner != ownerNodeName) return@forEach
+                            if (serviceName != null && markerService != serviceName) return@forEach
+                            if (pid in adoptedPids) return@forEach
+                            val h = java.lang.ProcessHandle.of(pid).orElse(null) ?: return@forEach
+                            if (!h.isAlive) {
+                                // Stale marker pointing to a dead PID — clean it up.
+                                try { java.nio.file.Files.delete(marker) } catch (_: Exception) {}
+                                return@forEach
+                            }
+                            logger.warn("Killing orphan backend PID {} (service={}, owner={}) from marker",
+                                pid, markerService, markerOwner)
+                            h.destroyForcibly()
+                            killed++
+                            try { java.nio.file.Files.delete(marker) } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            logger.debug("Marker parse failed for {}: {}", marker, e.message)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        logger.info("Orphan sweep done (workdirs scanned {}, killed {})", scanned, killed)
+    }
+
+    /**
+     * Deletes a cached sync workdir for a service no longer hosted on this agent.
+     * Called by the controller via [ClusterMessage.DiscardSyncWorkdir] after a
+     * migration or failover re-placement, so the source node doesn't hoard stale
+     * state. Safe if the workdir is already gone or the service is still running
+     * (in which case we bail out).
+     */
+    fun discardSyncWorkdir(serviceName: String) {
+        if (handles.containsKey(serviceName)) {
+            logger.warn("Refusing to discard workdir for '{}': service is still running", serviceName)
+            return
+        }
+        val workDir = workDirs.remove(serviceName) ?: run {
+            // Fall back to the canonical sync location convention.
+            val candidate = baseDir.resolve("services").resolve("sync").resolve(serviceName)
+            if (candidate.exists()) candidate else return
+        }
+        if (!workDir.exists()) return
+        try {
+            Files.walk(workDir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
+            logger.info("Discarded stale sync workdir for '{}' ({})", serviceName, workDir)
+        } catch (e: Exception) {
+            logger.warn("Failed to discard sync workdir for '{}': {}", serviceName, e.message)
+        }
+    }
+
     fun cleanup(serviceName: String, isStatic: Boolean) {
+        // State sync push: fires on clean exit (player typed /stop, process died normally).
+        // We push BEFORE removing state because we need the workDir + syncExcludes.
+        pushStateIfEnabled(serviceName)
+
         handles.remove(serviceName)
         stateStore.removeService(serviceName)
         if (!isStatic) {
@@ -187,6 +423,33 @@ class LocalProcessManager(
                     logger.warn("Failed to clean up work dir: {}", e.message)
                 }
             }
+        } else {
+            // For static/sync services we keep the workDir as a cache for next start
+            workDirs.remove(serviceName)
+        }
+    }
+
+    /**
+     * Pushes the current workdir back to the controller's canonical store if sync is
+     * enabled for this service. Called from both explicit stop and clean-exit paths.
+     * Errors are logged but don't throw — the caller shouldn't care whether push
+     * succeeded.
+     */
+    private fun pushStateIfEnabled(serviceName: String) {
+        val persisted = stateStore.load().services.firstOrNull { it.serviceName == serviceName } ?: return
+        if (!persisted.syncEnabled || stateSyncClient == null) return
+        val workDir = workDirs[serviceName] ?: java.nio.file.Path.of(persisted.workDir)
+        if (!workDir.exists()) {
+            logger.warn("State sync push '{}' skipped: workDir does not exist", serviceName)
+            return
+        }
+        try {
+            logger.info("State sync push '{}' to controller...", serviceName)
+            stateSyncClient.push(serviceName, workDir, persisted.syncExcludes)
+            logger.info("State sync push '{}' complete", serviceName)
+        } catch (e: Exception) {
+            logger.error("State sync push '{}' FAILED: {} — canonical copy is STALE on controller",
+                serviceName, e.message, e)
         }
     }
 
@@ -205,7 +468,12 @@ class LocalProcessManager(
      */
     fun recoverServices(): Pair<List<RecoveredService>, Set<Path>> {
         val state = stateStore.load()
-        if (state.services.isEmpty()) return emptyList<RecoveredService>() to emptySet()
+        if (state.services.isEmpty()) {
+            // No adopted services, but there may still be orphan backends from a
+            // previous agent run whose state file we lost (fresh install, wipe).
+            killOrphanProcesses()
+            return emptyList<RecoveredService>() to emptySet()
+        }
 
         logger.info("Found {} persisted service(s), attempting recovery...", state.services.size)
         val recovered = mutableListOf<RecoveredService>()
@@ -234,6 +502,13 @@ class LocalProcessManager(
         }
 
         logger.info("Recovered {}/{} service(s)", recovered.size, state.services.size)
+
+        // After adoption, any java.exe that advertises itself as a Nimbus service
+        // but wasn't adopted is an orphan from a previous agent run (the agent was
+        // killed without cleanly stopping children). Kill them now so new spawns
+        // don't fight for the same workdir's session.lock.
+        killOrphanProcesses()
+
         return recovered to protectedDirs
     }
 
@@ -410,6 +685,10 @@ class LocalProcessManager(
         cmd.add("-Dnimbus.service.name=${msg.serviceName}")
         cmd.add("-Dnimbus.service.group=${msg.groupName}")
         cmd.add("-Dnimbus.service.port=${msg.port}")
+        // Owner tag used by the orphan sweep to identify "our" children after
+        // an unclean agent restart. Without this, we can't tell our orphans
+        // apart from a sibling nimbus instance's processes on the same host.
+        cmd.add("-Dnimbus.owner=$ownerNodeName")
         if (msg.apiUrl.isNotEmpty()) {
             cmd.add("-Dnimbus.api.url=${msg.apiUrl}")
             cmd.add("-Dnimbus.api.token=${msg.apiToken}")

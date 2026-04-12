@@ -20,6 +20,23 @@ sealed class NimbusEvent {
     // Scaling
     data class ScaleUp(val groupName: String, val currentInstances: Int, val targetInstances: Int, val reason: String) : NimbusEvent()
     data class ScaleDown(val groupName: String, val serviceName: String, val reason: String) : NimbusEvent()
+    /** A scheduled start was skipped because placement constraints could not be satisfied (e.g. pinned node offline). */
+    data class PlacementBlocked(val groupName: String, val reason: String) : NimbusEvent()
+
+    // State sync
+    /** A state sync push committed successfully to the controller's canonical store. */
+    data class SyncCompleted(
+        val serviceName: String,
+        val filesInManifest: Int,
+        val filesReceived: Int,
+        val bytesReceived: Long,
+        val durationMs: Long
+    ) : NimbusEvent()
+    /** A state sync push failed — canonical copy may be stale or the push was rolled back. */
+    data class SyncFailed(
+        val serviceName: String,
+        val reason: String
+    ) : NimbusEvent()
 
     // Warm Pool
     data class ServicePrepared(val serviceName: String, val groupName: String) : NimbusEvent()

@@ -195,6 +195,14 @@ object ConsoleFormatter {
                 "${success("↑ SCALE UP")} group=${BOLD}${event.groupName}${RESET} ${event.currentInstances} → ${event.targetInstances} ${DIM}(${event.reason})${RESET}"
             is NimbusEvent.ScaleDown ->
                 "${warn("↓ SCALE DOWN")} ${BOLD}${event.serviceName}${RESET} ${DIM}from group=${event.groupName} (${event.reason})${RESET}"
+            is NimbusEvent.PlacementBlocked ->
+                "${warn("⊘ BLOCKED")} group=${BOLD}${event.groupName}${RESET} ${DIM}(${event.reason})${RESET}"
+            is NimbusEvent.SyncCompleted -> {
+                val mb = "%.2f".format(event.bytesReceived / 1024.0 / 1024.0)
+                "${success("◎ SYNC")} ${BOLD}${event.serviceName}${RESET} ${DIM}(${event.filesReceived}/${event.filesInManifest} files, ${mb} MB, ${event.durationMs}ms)${RESET}"
+            }
+            is NimbusEvent.SyncFailed ->
+                "${error("◎ SYNC FAILED")} ${BOLD}${event.serviceName}${RESET} ${DIM}(${event.reason})${RESET}"
             is NimbusEvent.PlayerConnected ->
                 "${success("+")} ${BOLD}${event.playerName}${RESET} joined ${CYAN}${event.serviceName}${RESET}"
             is NimbusEvent.PlayerServerSwitch ->
@@ -327,11 +335,11 @@ object ConsoleFormatter {
 
     fun banner(networkName: String): String = buildString {
         appendLine()
-        appendLine("""$BLUE   _  __ __ _   __ ___  _ __  ___$RESET""")
-        appendLine("""$BRIGHT_BLUE  / |/ // // \,' // o.)/// /,' _/$RESET""")
-        appendLine("""$CYAN / || // // \,' // o \/ U /_\ `. $RESET""")
-        appendLine("""$BRIGHT_CYAN/_/|_//_//_/ /_//___,'\_,'/___,' $RESET""")
-        appendLine("${DIM}            C L O U D$RESET")
+        appendLine("""$BLUE   _  ________  ______  __  ______$RESET""")
+        appendLine("""$BRIGHT_BLUE  / |/ /  _/  |/  / _ )/ / / / __/$RESET""")
+        appendLine("""$CYAN /    // // /|_/ / _  / /_/ /\ \  $RESET""")
+        appendLine("""$BRIGHT_CYAN/_/|_/___/_/  /_/____/\____/___/  $RESET""")
+        appendLine("${DIM}C L O U D$RESET")
         appendLine()
         if (networkName.isNotEmpty()) {
             appendLine("${DIM}Network:${RESET}  ${BOLD}$networkName${RESET}")

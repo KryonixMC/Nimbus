@@ -43,6 +43,7 @@ class NimbusConsole(
     private val api: NimbusApi? = null,
     private val proxySyncManager: dev.nimbuspowered.nimbus.proxy.ProxySyncManager? = null,
     private val nodeManager: NodeManager? = null,
+    private val clusterServer: dev.nimbuspowered.nimbus.cluster.ClusterServer? = null,
     private val loadBalancer: TcpLoadBalancer? = null,
     private val configPath: Path? = null,
     private val stressTestManager: StressTestManager? = null,
@@ -104,6 +105,7 @@ class NimbusConsole(
         dispatcher.register(StartCommand(serviceManager, groupManager))
         dispatcher.register(StopCommand(serviceManager, registry))
         dispatcher.register(RestartCommand(serviceManager, registry))
+        dispatcher.register(MigrateCommand(serviceManager, registry))
         dispatcher.register(PurgeCommand(serviceManager, registry))
         dispatcher.register(ScreenCommand(serviceManager, registry, terminal))
         dispatcher.register(ExecCommand(serviceManager, registry))
@@ -135,7 +137,7 @@ class NimbusConsole(
         }
         if (configPath != null) {
             dispatcher.register(LbCommand(config, configPath, loadBalancer, registry, groupManager))
-            dispatcher.register(ClusterCommand(config, configPath, nodeManager, registry))
+            dispatcher.register(ClusterCommand(config, configPath, nodeManager, registry, clusterServer))
         }
         if (stressTestManager != null) {
             dispatcher.register(StressCommand(stressTestManager, registry, groupManager))
@@ -248,6 +250,24 @@ class NimbusConsole(
      */
     suspend fun start() {
         if (!::terminal.isInitialized) init()
+
+        // Detect non-interactive launches (systemd, docker without -it, redirected
+        // stdin, start.bat via cmd.exe /c with < nul, etc.) — in those cases JLine
+        // reads EOF immediately and previously shut the controller down within
+        // seconds of starting. Treat this as daemon mode: keep the JVM alive via
+        // the event loop and REST API, never read stdin.
+        if (System.console() == null) {
+            logger.info("No controlling TTY — entering daemon mode (REPL disabled). Use REST API or send SIGTERM to stop.")
+            try {
+                kotlinx.coroutines.awaitCancellation()
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Normal shutdown path.
+            }
+            eventListenerJob?.cancel()
+            terminal.close()
+            logger.info("Console shut down")
+            return
+        }
 
         val prompt = "${ConsoleFormatter.BRIGHT_CYAN}${ConsoleFormatter.BOLD}nimbus${ConsoleFormatter.RESET} ${ConsoleFormatter.CYAN}»${ConsoleFormatter.RESET} "
         var running = true
