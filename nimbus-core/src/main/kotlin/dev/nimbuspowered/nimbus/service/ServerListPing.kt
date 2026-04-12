@@ -14,6 +14,10 @@ object ServerListPing {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** Tracks consecutive ping failures per host:port for backoff. */
+    private val consecutiveFailures = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private const val MAX_CONSECUTIVE_FAILURES = 3
+
     data class PingResult(
         val onlinePlayers: Int,
         val maxPlayers: Int,
@@ -60,7 +64,23 @@ object ServerListPing {
      * @param timeout connection/read timeout in milliseconds
      * @return PingResult or null if the ping failed
      */
-    fun ping(host: String = "127.0.0.1", port: Int, timeout: Int = 3000): PingResult? {
+    /**
+     * Resets the failure counter for a server, e.g. after a successful SDK health report.
+     */
+    fun resetFailures(host: String, port: Int) {
+        consecutiveFailures.remove("$host:$port")
+    }
+
+    fun ping(host: String = "127.0.0.1", port: Int, timeout: Int = 5000): PingResult? {
+        val key = "$host:$port"
+
+        // Skip servers that have failed too many times in a row
+        val failures = consecutiveFailures[key] ?: 0
+        if (failures >= MAX_CONSECUTIVE_FAILURES) {
+            logger.debug("Skipping ping for {}:{} — {} consecutive failures (backoff active)", host, port, failures)
+            return null
+        }
+
         var socket: Socket? = null
         try {
             socket = Socket()
@@ -93,20 +113,31 @@ object ServerListPing {
             val responseLength = readVarInt(input)
             if (responseLength <= 0) {
                 logger.debug("Received empty response from {}:{}", host, port)
+                consecutiveFailures.merge(key, 1) { old, _ -> old + 1 }
                 return null
             }
 
             val packetId = readVarInt(input)
             if (packetId != 0x00) {
                 logger.debug("Unexpected packet ID {} from {}:{}", packetId, host, port)
+                consecutiveFailures.merge(key, 1) { old, _ -> old + 1 }
                 return null
             }
 
             val jsonString = readString(input)
-            val response = json.decodeFromString<StatusResponse>(jsonString)
+            val response = try {
+                json.decodeFromString<StatusResponse>(jsonString)
+            } catch (e: Exception) {
+                logger.warn("Malformed status response from {}:{}: {}", host, port, e.message)
+                consecutiveFailures.merge(key, 1) { old, _ -> old + 1 }
+                return null
+            }
 
             // Extract MOTD - handle both string and object description formats
             val motd = response.description?.text ?: ""
+
+            // Success — reset failure tracking
+            consecutiveFailures.remove(key)
 
             return PingResult(
                 onlinePlayers = response.players.online,
@@ -117,6 +148,7 @@ object ServerListPing {
             )
         } catch (e: Exception) {
             logger.debug("Failed to ping {}:{}: {}", host, port, e.message)
+            consecutiveFailures.merge(key, 1) { old, _ -> old + 1 }
             return null
         } finally {
             try {

@@ -65,7 +65,12 @@ fun Route.clusterBootstrapRoutes(
         }
 
         val host = resolvePublicHost(clusterConfig)
-        val wsUrl = "wss://$host:${clusterConfig.agentPort}/cluster"
+        // If publicHost already contains a port (e.g. "myhost:9443"), use it as-is
+        val wsUrl = if (host.contains(":")) {
+            "wss://$host/cluster"
+        } else {
+            "wss://$host:${clusterConfig.agentPort}/cluster"
+        }
 
         logger.info("Bootstrap request served (host={}, fingerprint={})", host, info.fingerprint.take(23))
 

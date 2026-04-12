@@ -82,6 +82,14 @@ class TemplateManager {
     ): Path {
         require(templateNames.isNotEmpty()) { "Template stack must not be empty" }
 
+        // Detect duplicate templates in the stack (e.g. ["A", "B", "A"] → infinite overlay loop)
+        val visited = mutableSetOf<String>()
+        for (template in templateNames) {
+            if (!visited.add(template)) {
+                error("Template cycle detected: '$template' already applied. Chain: ${visited.joinToString(" -> ")} -> $template")
+            }
+        }
+
         if (templateNames.size == 1) {
             return prepareService(templateNames.first(), targetDir, templatesDir, preserveExisting)
         }

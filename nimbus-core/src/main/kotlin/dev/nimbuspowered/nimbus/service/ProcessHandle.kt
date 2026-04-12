@@ -132,10 +132,19 @@ class ProcessHandle : ServiceHandle {
     companion object {
         private val adoptLogger = LoggerFactory.getLogger(ProcessHandle::class.java)
 
+        /**
+         * Attempts to adopt an existing OS process by PID.
+         *
+         * **Windows limitation:** [java.lang.ProcessHandle.of] may return empty for
+         * grandchild processes (e.g. when a wrapper script spawns Java). This is a
+         * JVM limitation on Windows where the process tree is not fully visible.
+         * In such cases, adoption will silently fail and the service will be treated
+         * as not running.
+         */
         fun adopt(pid: Long, serviceName: String): ProcessHandle? {
             val osHandle = java.lang.ProcessHandle.of(pid).orElse(null)
             if (osHandle == null) {
-                adoptLogger.debug("PID {} does not exist", pid)
+                adoptLogger.debug("PID {} does not exist (may be a grandchild process on Windows)", pid)
                 return null
             }
             if (!osHandle.isAlive) {

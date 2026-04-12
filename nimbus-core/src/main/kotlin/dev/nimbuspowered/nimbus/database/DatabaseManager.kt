@@ -1,10 +1,14 @@
 package dev.nimbuspowered.nimbus.database
 
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import dev.nimbuspowered.nimbus.config.DatabaseConfig
 import dev.nimbuspowered.nimbus.database.migrations.V1_Baseline
 import dev.nimbuspowered.nimbus.database.migrations.V2_AuditLog
 import dev.nimbuspowered.nimbus.database.migrations.V3_CliSessions
 import dev.nimbuspowered.nimbus.database.migrations.V4_ServiceMetricSamples
+import dev.nimbuspowered.nimbus.database.migrations.V5_TimestampColumnWidth
+import dev.nimbuspowered.nimbus.database.migrations.V6_IndexesAndColumnFixes
 import dev.nimbuspowered.nimbus.module.Migration
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.Database
@@ -16,12 +20,15 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import kotlin.system.exitProcess
 
 class DatabaseManager(private val baseDir: Path, private val config: DatabaseConfig) {
 
     private val logger = LoggerFactory.getLogger(DatabaseManager::class.java)
     lateinit var database: Database
         private set
+
+    private var dataSource: HikariDataSource? = null
 
     private val migrationManager by lazy { MigrationManager(database) }
 
@@ -31,17 +38,25 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
         V2_AuditLog,
         V3_CliSessions,
         V4_ServiceMetricSamples,
+        V5_TimestampColumnWidth,
+        V6_IndexesAndColumnFixes,
     )
 
     fun init() {
-        database = when (config.type.lowercase()) {
-            "sqlite" -> connectSqlite()
-            "mysql", "mariadb" -> connectMysql()
-            "postgresql", "postgres" -> connectPostgresql()
-            else -> {
-                logger.warn("Unknown database type '{}', falling back to SQLite", config.type)
-                connectSqlite()
+        try {
+            database = when (config.type.lowercase()) {
+                "sqlite" -> connectSqlite()
+                "mysql", "mariadb" -> connectMysql()
+                "postgresql", "postgres" -> connectPostgresql()
+                else -> {
+                    logger.warn("Unknown database type '{}', falling back to SQLite", config.type)
+                    connectSqlite()
+                }
             }
+        } catch (e: Exception) {
+            logger.error("Failed to connect to database: {}", e.message)
+            logger.error("Check your database configuration in config/nimbus.toml under [database]")
+            exitProcess(1)
         }
 
         // Initialize migration tracking table
@@ -80,6 +95,7 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
             setupConnection = { connection ->
                 connection.createStatement().use { stmt ->
                     stmt.execute("PRAGMA journal_mode=WAL")
+                    stmt.execute("PRAGMA busy_timeout=5000")
                     stmt.execute("PRAGMA foreign_keys=ON")
                 }
             }
@@ -87,12 +103,14 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
     }
 
     private fun connectMysql(): Database {
-        return Database.connect(
+        val ds = createPooledDataSource(
             url = "jdbc:mysql://${config.host}:${config.port}/${config.name}?createDatabaseIfNotExist=true&useSSL=true&requireSSL=true&allowPublicKeyRetrieval=false",
             driver = "com.mysql.cj.jdbc.Driver",
             user = config.username,
             password = config.password
         )
+        dataSource = ds
+        return Database.connect(ds)
     }
 
     private fun connectPostgresql(): Database {
@@ -102,12 +120,36 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
                     "Set the correct port (default: 5432) in [database] config."
             )
         }
-        return Database.connect(
+        val ds = createPooledDataSource(
             url = "jdbc:postgresql://${config.host}:${config.port}/${config.name}?sslmode=require",
             driver = "org.postgresql.Driver",
             user = config.username,
             password = config.password
         )
+        dataSource = ds
+        return Database.connect(ds)
+    }
+
+    private fun createPooledDataSource(url: String, driver: String, user: String, password: String): HikariDataSource {
+        val hikariConfig = HikariConfig().apply {
+            jdbcUrl = url
+            driverClassName = driver
+            username = user
+            this.password = password
+            maximumPoolSize = config.poolSize
+            minimumIdle = 2
+            connectionTimeout = 30_000
+            validationTimeout = 5_000
+            idleTimeout = 600_000
+            maxLifetime = 1_800_000
+            connectionTestQuery = "SELECT 1"
+        }
+        return HikariDataSource(hikariConfig)
+    }
+
+    fun close() {
+        dataSource?.close()
+        logger.info("Database connection pool closed")
     }
 
     suspend fun <T> query(block: Transaction.() -> T): T =

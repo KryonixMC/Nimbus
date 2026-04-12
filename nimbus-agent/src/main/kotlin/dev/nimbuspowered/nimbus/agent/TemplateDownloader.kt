@@ -108,7 +108,18 @@ class TemplateDownloader(
                 ZipInputStream(raw.buffered()).use { zis ->
                     val entryBuf = ByteArray(64 * 1024)
                     var entry = zis.nextEntry
+                    var entryCount = 0
+                    var totalExtractedSize = 0L
+                    val maxEntries = 50_000
+                    val maxTotalSize = 10L * 1024 * 1024 * 1024 // 10 GB
                     while (entry != null) {
+                        entryCount++
+                        if (entryCount > maxEntries) {
+                            logger.error("ZIP extraction aborted: exceeded {} entries", maxEntries)
+                            // Clean up extracted directory
+                            Files.walk(normalizedTemplateDir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
+                            return false
+                        }
                         val target = normalizedTemplateDir.resolve(entry.name).normalize()
                         // Zip Slip protection: ensure extracted path stays within template directory
                         if (!target.startsWith(normalizedTemplateDir)) {
@@ -125,6 +136,12 @@ class TemplateDownloader(
                                 while (true) {
                                     val n = zis.read(entryBuf)
                                     if (n <= 0) break
+                                    totalExtractedSize += n
+                                    if (totalExtractedSize > maxTotalSize) {
+                                        logger.error("ZIP extraction aborted: exceeded {}GB total size", maxTotalSize / (1024 * 1024 * 1024))
+                                        Files.walk(normalizedTemplateDir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
+                                        return false
+                                    }
                                     out.write(entryBuf, 0, n)
                                 }
                             }
@@ -141,5 +158,9 @@ class TemplateDownloader(
         templateHashes[templateName] = expectedHash
         logger.info("Template '{}' downloaded and extracted ({} bytes)", templateName, totalBytes)
         return true
+    }
+
+    fun close() {
+        client.close()
     }
 }

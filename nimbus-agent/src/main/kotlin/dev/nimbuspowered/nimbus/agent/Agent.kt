@@ -8,6 +8,9 @@ import kotlin.io.path.exists
 private val logger = LoggerFactory.getLogger("NimbusAgent")
 
 fun main(args: Array<String>) = runBlocking {
+    // Suppress JLine "dumb terminal" warning when running without a real TTY
+    System.setProperty("org.jline.terminal.dumb", "true")
+
     val baseDir = Path("").toAbsolutePath()
     val configPath = baseDir.resolve("agent.toml")
 

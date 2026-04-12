@@ -199,14 +199,18 @@ class SmartScalingManager(
                 it.state in listOf(ServiceState.READY, ServiceState.PREPARING, ServiceState.STARTING)
             }
 
+            // Subtract warm pool size — those services are already pre-staged
+            val warmPoolSize = group.config.group.scaling.warmPoolSize
+            val effectiveNeeded = (neededInstances - warmPoolSize).coerceAtLeast(group.config.group.scaling.minInstances)
+
             val groupMax = group.config.group.scaling.maxInstances
-            if (readyOrStarting >= neededInstances || readyOrStarting >= groupMax) continue
+            if (readyOrStarting >= effectiveNeeded || readyOrStarting >= groupMax) continue
 
             // Cooldown check
             val lastAction = lastWarmupAction[group.name]
             if (lastAction != null && Instant.now().epochSecond - lastAction.epochSecond < WARMUP_COOLDOWN_SECONDS) continue
 
-            val toStart = (neededInstances - readyOrStarting).coerceAtMost(groupMax - readyOrStarting)
+            val toStart = (effectiveNeeded - readyOrStarting).coerceAtMost(groupMax - readyOrStarting)
             if (toStart <= 0) continue
 
             val reason = "predicted ${prediction.predictedPlayers} players in ${leadMinutes}min " +

@@ -197,6 +197,7 @@ download_agent() {
     local jar_name
     jar_name=$(basename "$jar_url")
     sudo mkdir -p "$INSTALL_DIR"
+    sudo chmod 750 "$INSTALL_DIR"
     info "Downloading Nimbus Agent ${selected_version}..."
     sudo curl -fsSL -o "$INSTALL_DIR/$jar_name" "$jar_url"
 

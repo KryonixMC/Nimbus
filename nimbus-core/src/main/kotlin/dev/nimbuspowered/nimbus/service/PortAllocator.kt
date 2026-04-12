@@ -17,6 +17,10 @@ class PortAllocator(
     private val allocatedPorts: MutableSet<Int> = Collections.synchronizedSet(mutableSetOf())
     private val allocatedBedrockPorts: MutableSet<Int> = Collections.synchronizedSet(mutableSetOf())
 
+    /** Ports that have been probed and confirmed unavailable (occupied by external processes). */
+    private val externallyOccupied: MutableSet<Int> = Collections.synchronizedSet(mutableSetOf())
+    private val externallyOccupiedUdp: MutableSet<Int> = Collections.synchronizedSet(mutableSetOf())
+
     /**
      * Allocates the fixed proxy port (25565).
      */
@@ -34,13 +38,15 @@ class PortAllocator(
 
     /**
      * Allocates a backend port from the high range (30000+).
+     * Uses in-memory tracking as the primary check. Socket probing is only
+     * done once per port to detect external occupancy, then cached.
      * @throws IllegalStateException if no port is available in range 30000-39999
      */
     fun allocateBackendPort(): Int {
         val maxPort = backendBasePort + 9999
         var port = backendBasePort
         synchronized(allocatedPorts) {
-            while (allocatedPorts.contains(port) || !isTcpPortAvailable(port)) {
+            while (allocatedPorts.contains(port) || isExternallyOccupiedTcp(port)) {
                 port++
                 if (port > maxPort) {
                     throw IllegalStateException("No available backend ports in range $backendBasePort-$maxPort")
@@ -68,7 +74,7 @@ class PortAllocator(
         val maxPort = bedrockBasePort + 99
         var port = bedrockBasePort
         synchronized(allocatedBedrockPorts) {
-            while (allocatedBedrockPorts.contains(port) || !isUdpPortAvailable(port)) {
+            while (allocatedBedrockPorts.contains(port) || isExternallyOccupiedUdp(port)) {
                 port++
                 if (port > maxPort) {
                     throw IllegalStateException("No available Bedrock ports in range $bedrockBasePort-$maxPort")
@@ -82,7 +88,7 @@ class PortAllocator(
 
     fun reserveIfAvailable(port: Int): Boolean {
         synchronized(allocatedPorts) {
-            if (allocatedPorts.contains(port) || !isTcpPortAvailable(port)) {
+            if (allocatedPorts.contains(port) || isExternallyOccupiedTcp(port)) {
                 return false
             }
             allocatedPorts.add(port)
@@ -107,6 +113,7 @@ class PortAllocator(
 
     fun release(port: Int) {
         if (allocatedPorts.remove(port)) {
+            externallyOccupied.remove(port)
             logger.info("Released port {}", port)
         } else {
             logger.warn("Attempted to release untracked port {}", port)
@@ -115,23 +122,42 @@ class PortAllocator(
 
     fun releaseBedrockPort(port: Int) {
         if (allocatedBedrockPorts.remove(port)) {
+            externallyOccupiedUdp.remove(port)
             logger.info("Released Bedrock port {}", port)
         }
     }
 
-    private fun isTcpPortAvailable(port: Int): Boolean {
-        return try {
+    /**
+     * Checks if a TCP port is occupied by an external process (not tracked by us).
+     * Result is cached so the socket probe only happens once per port.
+     */
+    private fun isExternallyOccupiedTcp(port: Int): Boolean {
+        if (externallyOccupied.contains(port)) return true
+        val available = try {
             ServerSocket(port).use { true }
         } catch (_: Exception) {
             false
         }
+        if (!available) {
+            externallyOccupied.add(port)
+        }
+        return !available
     }
 
-    private fun isUdpPortAvailable(port: Int): Boolean {
-        return try {
+    /**
+     * Checks if a UDP port is occupied by an external process (not tracked by us).
+     * Result is cached so the socket probe only happens once per port.
+     */
+    private fun isExternallyOccupiedUdp(port: Int): Boolean {
+        if (externallyOccupiedUdp.contains(port)) return true
+        val available = try {
             DatagramSocket(port).use { true }
         } catch (_: Exception) {
             false
         }
+        if (!available) {
+            externallyOccupiedUdp.add(port)
+        }
+        return !available
     }
 }

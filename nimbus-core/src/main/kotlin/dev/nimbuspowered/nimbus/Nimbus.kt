@@ -196,7 +196,10 @@ fun nimbusMain() = runBlocking {
     PluginDeployer(baseDir).deployAll(templatesDir, staticDir, globalTemplateDir, globalProxyTemplateDir, config, softwareResolver)
 
     // Initialize components
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        logger.error("Uncaught coroutine exception", e)
+    }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + exceptionHandler)
     val eventBus = EventBus(scope)
 
     // Initialize database
@@ -211,23 +214,6 @@ fun nimbusMain() = runBlocking {
     )
     val templateManager = TemplateManager()
     val groupManager = GroupManager(templatesDir)
-
-    // Start metrics collector
-    val metricsCollector = MetricsCollector(databaseManager, eventBus, scope)
-    val metricsJobs = metricsCollector.start()
-    metricsCollector.startRetentionCleanup(scope)
-
-    // Start audit collector (if enabled)
-    val auditCollector = if (config.audit.enabled) {
-        val collector = dev.nimbuspowered.nimbus.database.AuditCollector(databaseManager, eventBus, scope, config.audit.retentionDays)
-        collector.start()
-        collector.startRetentionCleanup(scope)
-        collector
-    } else null
-
-    // Start CLI session tracker
-    val cliSessionTracker = dev.nimbuspowered.nimbus.database.CliSessionTracker(databaseManager, eventBus, scope)
-    cliSessionTracker.start()
 
     val proxySyncManager = dev.nimbuspowered.nimbus.proxy.ProxySyncManager(proxyDir)
     proxySyncManager.init()
@@ -275,6 +261,21 @@ fun nimbusMain() = runBlocking {
 
     // Run database migrations (core + module) after all modules have registered theirs
     databaseManager.runMigrations(moduleContext.migrations)
+
+    // Start collectors AFTER migrations have created required tables (C8 fix)
+    val metricsCollector = MetricsCollector(databaseManager, eventBus, scope)
+    val metricsJobs = metricsCollector.start()
+    metricsCollector.startRetentionCleanup(scope)
+
+    val auditCollector = if (config.audit.enabled) {
+        val collector = dev.nimbuspowered.nimbus.database.AuditCollector(databaseManager, eventBus, scope, config.audit.retentionDays)
+        collector.start()
+        collector.startRetentionCleanup(scope)
+        collector
+    } else null
+
+    val cliSessionTracker = dev.nimbuspowered.nimbus.database.CliSessionTracker(databaseManager, eventBus, scope)
+    cliSessionTracker.start()
 
     // Enable modules after migrations have created all required tables
     moduleManager.enableAll()
@@ -378,7 +379,7 @@ fun nimbusMain() = runBlocking {
         groupManager = groupManager,
         eventBus = eventBus,
         scope = scope,
-        checkIntervalMs = config.controller.heartbeatInterval,
+        checkIntervalMs = config.controller.scalingTickInterval * 1000,
         globalMaxServices = config.controller.maxServices
     )
     val stressTestManager = StressTestManager(registry, groupManager, eventBus, proxySyncManager, scope)
@@ -391,14 +392,15 @@ fun nimbusMain() = runBlocking {
         groupManager = groupManager,
         portAllocator = portAllocator,
         eventBus = eventBus,
-        scope = scope
+        scope = scope,
+        globalMaxServices = config.controller.maxServices
     )
     serviceManager.warmPoolManager = warmPoolManager
 
     // Scaling engine is created here but started AFTER startMinimumInstances()
     // to prevent it from racing the phased startup (proxy must be READY before backends).
     var scalingJob: kotlinx.coroutines.Job? = null
-    logger.info("Scaling engine created (interval: {}ms, start deferred until after initial boot)", config.controller.heartbeatInterval)
+    logger.info("Scaling engine created (interval: {}s, start deferred until after initial boot)", config.controller.scalingTickInterval)
     if (config.bedrock.enabled) {
         logger.info("Bedrock support enabled (Geyser + Floodgate, base port {})", config.bedrock.basePort)
     }
@@ -474,6 +476,7 @@ fun nimbusMain() = runBlocking {
             } catch (e: Exception) {
                 logger.error("Error during shutdown: {}", e.message)
             }
+            databaseManager.close()
             scope.cancel()
             logger.info("Nimbus stopped.")
         }
@@ -519,7 +522,7 @@ fun nimbusMain() = runBlocking {
 
     // Start cluster WebSocket server on dedicated agent_port (if cluster enabled)
     clusterServer?.start()
-    if (clusterServer != null) {
+    if (clusterServer?.isRunning == true) {
         scope.launch {
             eventBus.emit(NimbusEvent.ClusterStarted(config.cluster.bind, config.cluster.agentPort, config.cluster.placementStrategy))
         }
@@ -598,6 +601,7 @@ fun nimbusMain() = runBlocking {
         moduleManager.disableAll()
         api.stop()
         serviceManager.stopAll()
+        databaseManager.close()
         scope.cancel()
         logger.info("Nimbus stopped.")
     }

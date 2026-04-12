@@ -21,7 +21,7 @@ class ReloadCommand(
 ) : Command {
 
     override val name = "reload"
-    override val description = "Hot-reload group and proxy configuration files"
+    override val description = "Hot-reload group and proxy configuration files (database/API config changes require restart)"
     override val usage = "reload"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
@@ -91,6 +91,8 @@ class ReloadCommand(
             ))
             output.success("Proxy sync config reloaded and pushed to proxies.")
         }
+
+        output.info("Note: Database, API, and cluster config changes require a full restart.")
         return true
     }
 

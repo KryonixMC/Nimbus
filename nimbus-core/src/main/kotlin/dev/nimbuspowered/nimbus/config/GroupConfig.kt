@@ -64,7 +64,41 @@ data class ResourcesConfig(
     val memory: String = "1G",
     @SerialName("max_players")
     val maxPlayers: Int = 50
-)
+) {
+    init {
+        val error = validateMemoryRange(memory)
+        if (error != null) {
+            throw IllegalArgumentException(error)
+        }
+    }
+
+    companion object {
+        private val MEMORY_PATTERN = Regex("^(\\d+)[MmGg]$")
+        private const val MIN_MEMORY_MB = 128L
+        private const val MAX_MEMORY_MB = 524288L // 512G
+
+        /** Parses a memory string (e.g. "512M", "2G") and returns the value in megabytes, or null if invalid. */
+        fun parseMemoryMb(memoryString: String): Long? {
+            val match = MEMORY_PATTERN.matchEntire(memoryString) ?: return null
+            val value = match.groupValues[1].toLongOrNull() ?: return null
+            return when (memoryString.last().uppercaseChar()) {
+                'G' -> value * 1024
+                'M' -> value
+                else -> null
+            }
+        }
+
+        /** Validates that a memory string is within the allowed range (128M-512G). Returns an error message or null. */
+        fun validateMemoryRange(memoryString: String): String? {
+            val mb = parseMemoryMb(memoryString)
+                ?: return "Invalid memory format '$memoryString' — expected format like '512M' or '2G'"
+            if (mb !in MIN_MEMORY_MB..MAX_MEMORY_MB) {
+                return "Memory value '$memoryString' out of range — must be between 128M and 512G (got ${mb}M)"
+            }
+            return null
+        }
+    }
+}
 
 @Serializable
 data class ScalingConfig(
