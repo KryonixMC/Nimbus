@@ -159,4 +159,8 @@ class TemplateDownloader(
         logger.info("Template '{}' downloaded and extracted ({} bytes)", templateName, totalBytes)
         return true
     }
+
+    fun close() {
+        client.close()
+    }
 }

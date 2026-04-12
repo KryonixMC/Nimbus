@@ -6,6 +6,7 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -400,7 +401,9 @@ class SoftwareResolver {
             }
 
             val targetFile = pluginsDir.resolve("${plugin.slug}-${latest.name}.jar")
-            Files.write(targetFile, jarResponse.readRawBytes())
+            jarResponse.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+            }
 
             val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
             logger.info("Downloaded {} {} ({} MB)", plugin.slug, latest.name, sizeMb)
@@ -641,7 +644,9 @@ class SoftwareResolver {
             }
 
             val targetFile = pluginsDir.resolve(download.name)
-            Files.write(targetFile, jarResponse.readRawBytes())
+            jarResponse.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+            }
             val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
             logger.info("Downloaded {} {} v{} build {} ({} MB)", displayName, platform, latestVersion, latestBuild.build, sizeMb)
             true
@@ -684,7 +689,9 @@ class SoftwareResolver {
                     val jarResponse = client.get(file.url)
                     if (jarResponse.status == HttpStatusCode.OK) {
                         val targetFile = targetDir.resolve(file.filename)
-                        Files.write(targetFile, jarResponse.readRawBytes())
+                        jarResponse.bodyAsChannel().toInputStream().use { input ->
+                            Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+                        }
                         val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
                         logger.info("Auto-installed {} ({}, {} MB)", displayName, file.filename, sizeMb)
                         return true
@@ -790,7 +797,9 @@ class SoftwareResolver {
                 logger.error("Failed to download Forge installer: HTTP {}", response.status)
                 return false
             }
-            Files.write(installerFile, response.readRawBytes())
+            response.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(installerFile).use { out -> input.copyTo(out, 65536) }
+            }
             logger.info("Downloaded Forge installer ({} MB)", String.format("%.1f", installerFile.fileSize() / 1024.0 / 1024.0))
 
             val process = withContext(Dispatchers.IO) {
@@ -839,7 +848,9 @@ class SoftwareResolver {
                 logger.error("Failed to download NeoForge installer: HTTP {}", response.status)
                 return false
             }
-            Files.write(installerFile, response.readRawBytes())
+            response.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(installerFile).use { out -> input.copyTo(out, 65536) }
+            }
             logger.info("Downloaded NeoForge installer ({} MB)", String.format("%.1f", installerFile.fileSize() / 1024.0 / 1024.0))
 
             val process = withContext(Dispatchers.IO) {
@@ -902,7 +913,9 @@ class SoftwareResolver {
             }
 
             val targetFile = targetDir.resolve("server.jar")
-            Files.write(targetFile, response.readRawBytes())
+            response.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+            }
 
             val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
             logger.info("Downloaded Fabric server launcher ({} MB) — MC {} / Loader {}", sizeMb, mcVersion, loaderVer)
@@ -1050,7 +1063,9 @@ class SoftwareResolver {
 
             Files.createDirectories(targetDir)
             val targetFile = targetDir.resolve("server.jar")
-            Files.write(targetFile, jarResponse.readRawBytes())
+            jarResponse.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+            }
 
             val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
             logger.info("Downloaded Pufferfish {} ({} MB)", artifact.fileName, sizeMb)
@@ -1100,21 +1115,32 @@ class SoftwareResolver {
 
         Files.createDirectories(targetDir)
         val targetFile = targetDir.resolve(jarFileName(software))
-        val bytes = jarResponse.readRawBytes()
+
+        // Stream to disk while computing SHA-256 digest for verification
+        val digest = if (!expectedSha256.isNullOrBlank()) MessageDigest.getInstance("SHA-256") else null
+        jarResponse.bodyAsChannel().toInputStream().use { input ->
+            Files.newOutputStream(targetFile).use { out ->
+                val buf = ByteArray(65536)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    digest?.update(buf, 0, n)
+                }
+            }
+        }
 
         // Verify SHA-256 checksum if provided by the API
-        if (!expectedSha256.isNullOrBlank()) {
-            val actualSha256 = MessageDigest.getInstance("SHA-256").digest(bytes)
-                .joinToString("") { "%02x".format(it) }
+        if (digest != null && !expectedSha256.isNullOrBlank()) {
+            val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
             if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
                 logger.error("SHA-256 mismatch for {} {} {}! Expected: {}, got: {}. Download rejected.",
                     software, version, buildInfo, expectedSha256, actualSha256)
+                Files.deleteIfExists(targetFile)
                 return null
             }
             logger.debug("SHA-256 verified for {} {} {}", software, version, buildInfo)
         }
-
-        Files.write(targetFile, bytes)
 
         val sizeMb = String.format("%.1f", targetFile.fileSize() / 1024.0 / 1024.0)
         logger.info("Downloaded {} {} {} ({} MB)", software, version, buildInfo, sizeMb)

@@ -69,7 +69,8 @@ class ScalingEngine(
     /** Applies exponential backoff to the static-sync retry path when a placement
      * keeps failing. Schedule: 10s → 30s → 90s → 5min → 15min, capped. */
     private fun bumpStaticSyncBackoff(groupName: String, reason: String) {
-        val fails = staticSyncRetryFailures.merge(groupName, 1) { old, _ -> old + 1 } ?: 1
+        staticSyncRetryFailures.merge(groupName, 1) { old, _ -> old + 1 }
+        val fails = staticSyncRetryFailures[groupName] ?: 1
         val delay = when {
             fails <= 1 -> 10L
             fails == 2 -> 30L
@@ -277,7 +278,8 @@ class ScalingEngine(
                 }
 
                 // Require consecutive zero readings before tracking as idle
-                val zeroCount = consecutiveZeroReadings.merge(service.name, 1) { old, _ -> old + 1 } ?: 0
+                consecutiveZeroReadings.merge(service.name, 1) { old, _ -> old + 1 }
+                val zeroCount = consecutiveZeroReadings[service.name] ?: 0
                 if (zeroCount < 2) continue  // Skip first zero reading
 
                 // Service is confirmed empty — track idle start
@@ -300,8 +302,13 @@ class ScalingEngine(
                             reason = scaleDownReason
                         )
                     )
-                    serviceManager.stopService(service.name)
+                    // Use non-forceful stop: stopService will transition to DRAINING and
+                    // wait for players to leave (with timeout) before actually stopping.
+                    // This handles the TOCTOU race where a player joins between our idle
+                    // check above and the actual stop.
+                    serviceManager.stopService(service.name, forceful = false)
                     idleSince.remove(service.name)
+                    consecutiveZeroReadings.remove(service.name)
                     lastScaleDown[group.name] = Instant.now()
                     currentRoutableCount--
                 }
@@ -309,13 +316,16 @@ class ScalingEngine(
         }
 
         // Clean up tracking entries for services/groups that no longer exist
+        // Snapshot keys before removing to avoid ConcurrentModificationException
         val activeServiceNames = registry.getAll().map { it.name }.toSet()
-        idleSince.keys.removeAll { it !in activeServiceNames }
-        consecutiveZeroReadings.keys.removeAll { it !in activeServiceNames }
+        idleSince.keys.toList().filter { it !in activeServiceNames }.forEach { idleSince.remove(it) }
+        consecutiveZeroReadings.keys.toList().filter { it !in activeServiceNames }.forEach { consecutiveZeroReadings.remove(it) }
 
         val activeGroupNames = groupManager.getAllGroups().map { it.name }.toSet()
-        lastScaleUp.keys.removeAll { it !in activeGroupNames }
-        lastScaleDown.keys.removeAll { it !in activeGroupNames }
+        lastScaleUp.keys.toList().filter { it !in activeGroupNames }.forEach { lastScaleUp.remove(it) }
+        lastScaleDown.keys.toList().filter { it !in activeGroupNames }.forEach { lastScaleDown.remove(it) }
+        staticSyncRetryFailures.keys.toList().filter { it !in activeGroupNames }.forEach { staticSyncRetryFailures.remove(it) }
+        staticSyncRetryBackoffUntil.keys.toList().filter { it !in activeGroupNames }.forEach { staticSyncRetryBackoffUntil.remove(it) }
     }
 
     /**

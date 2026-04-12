@@ -196,7 +196,10 @@ fun nimbusMain() = runBlocking {
     PluginDeployer(baseDir).deployAll(templatesDir, staticDir, globalTemplateDir, globalProxyTemplateDir, config, softwareResolver)
 
     // Initialize components
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        logger.error("Uncaught coroutine exception", e)
+    }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + exceptionHandler)
     val eventBus = EventBus(scope)
 
     // Initialize database
@@ -473,6 +476,7 @@ fun nimbusMain() = runBlocking {
             } catch (e: Exception) {
                 logger.error("Error during shutdown: {}", e.message)
             }
+            databaseManager.close()
             scope.cancel()
             logger.info("Nimbus stopped.")
         }
@@ -518,7 +522,7 @@ fun nimbusMain() = runBlocking {
 
     // Start cluster WebSocket server on dedicated agent_port (if cluster enabled)
     clusterServer?.start()
-    if (clusterServer != null) {
+    if (clusterServer?.isRunning == true) {
         scope.launch {
             eventBus.emit(NimbusEvent.ClusterStarted(config.cluster.bind, config.cluster.agentPort, config.cluster.placementStrategy))
         }
@@ -597,6 +601,7 @@ fun nimbusMain() = runBlocking {
         moduleManager.disableAll()
         api.stop()
         serviceManager.stopAll()
+        databaseManager.close()
         scope.cancel()
         logger.info("Nimbus stopped.")
     }

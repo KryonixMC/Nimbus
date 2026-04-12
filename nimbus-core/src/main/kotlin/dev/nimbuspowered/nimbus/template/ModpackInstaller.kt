@@ -5,6 +5,7 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -21,7 +22,6 @@ import java.util.zip.ZipFile
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.name
-import kotlin.io.path.writeBytes
 
 // ── Modrinth .mrpack index models ──────────────────────────
 
@@ -285,12 +285,16 @@ class ModpackInstaller(private val client: HttpClient, private val curseForgeApi
             val targetFile = downloadDir.resolve(mrpackFile.filename)
 
             logger.info("Downloading {} ({})...", mrpackFile.filename, formatSize(mrpackFile.size))
-            val dlResponse = client.get(mrpackFile.url)
-            if (dlResponse.status != HttpStatusCode.OK) {
-                logger.error("Download failed: HTTP {}", dlResponse.status)
-                return null
+            client.prepareGet(mrpackFile.url).execute { dlResponse ->
+                if (dlResponse.status != HttpStatusCode.OK) {
+                    logger.error("Download failed: HTTP {}", dlResponse.status)
+                    return@execute
+                }
+                dlResponse.bodyAsChannel().toInputStream().use { input ->
+                    Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+                }
             }
-            targetFile.writeBytes(dlResponse.readRawBytes())
+            if (!targetFile.exists()) return null
             logger.info("Downloaded {}", mrpackFile.filename)
             targetFile
         } catch (e: Exception) {
@@ -373,12 +377,16 @@ class ModpackInstaller(private val client: HttpClient, private val curseForgeApi
             val targetFile = downloadDir.resolve(fileToDownload.fileName)
 
             logger.info("Downloading {} from CurseForge ({})...", fileToDownload.fileName, formatSize(fileToDownload.fileLength))
-            val dlResponse = client.get(downloadUrl)
-            if (dlResponse.status != HttpStatusCode.OK) {
-                logger.error("Download failed: HTTP {}", dlResponse.status)
-                return null
+            client.prepareGet(downloadUrl).execute { dlResponse ->
+                if (dlResponse.status != HttpStatusCode.OK) {
+                    logger.error("Download failed: HTTP {}", dlResponse.status)
+                    return@execute
+                }
+                dlResponse.bodyAsChannel().toInputStream().use { input ->
+                    Files.newOutputStream(targetFile).use { out -> input.copyTo(out, 65536) }
+                }
             }
-            targetFile.writeBytes(dlResponse.readRawBytes())
+            if (!targetFile.exists()) return null
             logger.info("Downloaded {}", fileToDownload.fileName)
             targetFile
         } catch (e: Exception) {
@@ -680,40 +688,53 @@ class ModpackInstaller(private val client: HttpClient, private val curseForgeApi
         val url = file.downloads.firstOrNull() ?: return false
 
         return try {
-            val response = client.get(url)
-            if (response.status != HttpStatusCode.OK) {
-                logger.warn("Failed to download {}: HTTP {}", file.path, response.status)
-                return false
-            }
-
-            val bytes = response.readRawBytes()
-
-            // Verify hash
-            val expectedSha1 = file.hashes["sha1"]
-            if (expectedSha1 != null) {
-                val actualSha1 = MessageDigest.getInstance("SHA-1").digest(bytes).toHexString()
-                if (actualSha1 != expectedSha1) {
-                    logger.warn("Hash mismatch for {}: expected {} got {}", file.path, expectedSha1, actualSha1)
-                    // Try once more
-                    val retryResponse = client.get(url)
-                    if (retryResponse.status == HttpStatusCode.OK) {
-                        val retryBytes = retryResponse.readRawBytes()
-                        val retrySha1 = MessageDigest.getInstance("SHA-1").digest(retryBytes).toHexString()
-                        if (retrySha1 == expectedSha1) {
-                            targetPath.writeBytes(retryBytes)
-                            return true
-                        }
-                    }
-                    return false
-                }
-            }
-
-            targetPath.writeBytes(bytes)
-            true
+            if (!streamDownloadWithHash(url, targetPath, file.hashes["sha1"], file.path)) {
+                // Try once more on failure
+                logger.warn("Retrying download for {}", file.path)
+                streamDownloadWithHash(url, targetPath, file.hashes["sha1"], file.path)
+            } else true
         } catch (e: Exception) {
             logger.warn("Failed to download {}: {}", file.path, e.message)
             false
         }
+    }
+
+    /**
+     * Streams a download to disk while computing a SHA-1 digest for verification.
+     * Returns true on success, false on HTTP error or hash mismatch.
+     */
+    private suspend fun streamDownloadWithHash(url: String, targetPath: Path, expectedSha1: String?, fileName: String): Boolean {
+        var ok = false
+        client.prepareGet(url).execute { response ->
+            if (response.status != HttpStatusCode.OK) {
+                logger.warn("Failed to download {}: HTTP {}", fileName, response.status)
+                return@execute
+            }
+
+            val digest = if (expectedSha1 != null) MessageDigest.getInstance("SHA-1") else null
+            response.bodyAsChannel().toInputStream().use { input ->
+                Files.newOutputStream(targetPath).use { out ->
+                    val buf = ByteArray(65536)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n <= 0) break
+                        out.write(buf, 0, n)
+                        digest?.update(buf, 0, n)
+                    }
+                }
+            }
+
+            if (expectedSha1 != null && digest != null) {
+                val actualSha1 = digest.digest().toHexString()
+                if (actualSha1 != expectedSha1) {
+                    logger.warn("Hash mismatch for {}: expected {} got {}", fileName, expectedSha1, actualSha1)
+                    Files.deleteIfExists(targetPath)
+                    return@execute
+                }
+            }
+            ok = true
+        }
+        return ok
     }
 
     /**
@@ -771,6 +792,10 @@ class ModpackInstaller(private val client: HttpClient, private val curseForgeApi
             }
             else -> ServerSoftware.CUSTOM to ""
         }
+    }
+
+    fun close() {
+        client.close()
     }
 
     private fun ByteArray.toHexString(): String = joinToString("") { "%02x".format(it) }

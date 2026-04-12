@@ -27,6 +27,7 @@ class AuditCollector(
 ) {
     private val logger = LoggerFactory.getLogger(AuditCollector::class.java)
 
+    private val maxQueueSize = 10_000
     private val queue = ConcurrentLinkedQueue<AuditEntry>()
     private var flushJob: Job? = null
 
@@ -117,6 +118,10 @@ class AuditCollector(
     }
 
     private fun enqueue(event: NimbusEvent, action: String, target: String, details: String = "") {
+        if (queue.size >= maxQueueSize) {
+            logger.warn("Audit queue full ({} entries), dropping event: {}", maxQueueSize, action)
+            return
+        }
         queue.add(AuditEntry(
             timestamp = event.timestamp.toString(),
             actor = event.actor,

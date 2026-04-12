@@ -28,6 +28,8 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
     lateinit var database: Database
         private set
 
+    private var dataSource: HikariDataSource? = null
+
     private val migrationManager by lazy { MigrationManager(database) }
 
     /** Core migrations bundled with nimbus-core. */
@@ -93,6 +95,7 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
             setupConnection = { connection ->
                 connection.createStatement().use { stmt ->
                     stmt.execute("PRAGMA journal_mode=WAL")
+                    stmt.execute("PRAGMA busy_timeout=5000")
                     stmt.execute("PRAGMA foreign_keys=ON")
                 }
             }
@@ -100,13 +103,14 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
     }
 
     private fun connectMysql(): Database {
-        val dataSource = createPooledDataSource(
+        val ds = createPooledDataSource(
             url = "jdbc:mysql://${config.host}:${config.port}/${config.name}?createDatabaseIfNotExist=true&useSSL=true&requireSSL=true&allowPublicKeyRetrieval=false",
             driver = "com.mysql.cj.jdbc.Driver",
             user = config.username,
             password = config.password
         )
-        return Database.connect(dataSource)
+        dataSource = ds
+        return Database.connect(ds)
     }
 
     private fun connectPostgresql(): Database {
@@ -116,13 +120,14 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
                     "Set the correct port (default: 5432) in [database] config."
             )
         }
-        val dataSource = createPooledDataSource(
+        val ds = createPooledDataSource(
             url = "jdbc:postgresql://${config.host}:${config.port}/${config.name}?sslmode=require",
             driver = "org.postgresql.Driver",
             user = config.username,
             password = config.password
         )
-        return Database.connect(dataSource)
+        dataSource = ds
+        return Database.connect(ds)
     }
 
     private fun createPooledDataSource(url: String, driver: String, user: String, password: String): HikariDataSource {
@@ -140,6 +145,11 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
             connectionTestQuery = "SELECT 1"
         }
         return HikariDataSource(hikariConfig)
+    }
+
+    fun close() {
+        dataSource?.close()
+        logger.info("Database connection pool closed")
     }
 
     suspend fun <T> query(block: Transaction.() -> T): T =

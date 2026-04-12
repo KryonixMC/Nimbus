@@ -67,7 +67,7 @@ class ClusterServer(
 
         val password = resolveKeystorePassword()
         val (keyStore, effectivePassword) = try {
-            TlsHelper.ensureKeyStore(keystorePath, password, config.bind, config.extraSans)
+            TlsHelper.ensureKeyStore(keystorePath, password, config.token, config.bind, config.extraSans)
         } catch (e: Exception) {
             logger.error("Failed to load/generate keystore at '{}': {}", keystorePath, e.message)
             return

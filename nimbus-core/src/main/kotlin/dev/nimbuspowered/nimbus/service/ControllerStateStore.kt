@@ -6,6 +6,9 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 import kotlin.io.path.*
 
 private val stateJson = Json {
@@ -43,10 +46,11 @@ class ControllerStateStore(baseDir: Path) {
     private val stateDir = baseDir.resolve("state")
     private val stateFile = stateDir.resolve("services.json")
     private val tmpFile = stateDir.resolve("services.json.tmp")
+    private val lock = ReentrantReadWriteLock()
 
-    fun load(): ControllerState {
-        if (!stateFile.exists()) return ControllerState()
-        return try {
+    fun load(): ControllerState = lock.read {
+        if (!stateFile.exists()) return@read ControllerState()
+        try {
             val text = stateFile.readText()
             stateJson.decodeFromString<ControllerState>(text)
         } catch (e: Exception) {
@@ -55,7 +59,7 @@ class ControllerStateStore(baseDir: Path) {
         }
     }
 
-    fun save(state: ControllerState) {
+    private fun save(state: ControllerState) {
         try {
             stateDir.createDirectories()
             tmpFile.writeText(stateJson.encodeToString(state))
@@ -71,7 +75,7 @@ class ControllerStateStore(baseDir: Path) {
         }
     }
 
-    fun addService(service: PersistedLocalService) {
+    fun addService(service: PersistedLocalService) = lock.write {
         val state = load()
         val updated = state.copy(
             services = state.services.filter { it.serviceName != service.serviceName } + service
@@ -79,13 +83,13 @@ class ControllerStateStore(baseDir: Path) {
         save(updated)
     }
 
-    fun removeService(serviceName: String) {
+    fun removeService(serviceName: String) = lock.write {
         val state = load()
-        if (state.services.none { it.serviceName == serviceName }) return
+        if (state.services.none { it.serviceName == serviceName }) return@write
         save(state.copy(services = state.services.filter { it.serviceName != serviceName }))
     }
 
-    fun clear() {
+    fun clear() = lock.write {
         try {
             stateFile.deleteIfExists()
         } catch (e: Exception) {

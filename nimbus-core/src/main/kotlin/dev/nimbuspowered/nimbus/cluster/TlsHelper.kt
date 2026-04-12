@@ -41,26 +41,35 @@ object TlsHelper {
     fun ensureKeyStore(
         path: Path,
         configuredPassword: String,
+        clusterToken: String,
         bind: String,
         extraSans: List<String> = emptyList()
     ): Pair<KeyStore, String> {
+        // Password resolution: explicit config > derived from cluster token > generate random
+        val derivedPassword = if (clusterToken.isNotBlank()) deriveKeystorePassword(clusterToken) else ""
+
         if (path.exists()) {
-            val password = configuredPassword.ifBlank {
-                logger.warn("Keystore exists but no password configured — use cluster.keystore_password or NIMBUS_CLUSTER_KEYSTORE_PASSWORD")
-                generateSecurePassword()
+            val password = configuredPassword.ifBlank { derivedPassword }
+            if (password.isBlank()) {
+                logger.warn("Keystore exists but no password configured and no cluster token available — use cluster.keystore_password or NIMBUS_CLUSTER_KEYSTORE_PASSWORD")
             }
-            val ks = loadKeyStore(path, password)
-            logCertificateFingerprint(ks)
-            return ks to password
+            try {
+                val ks = loadKeyStore(path, password)
+                logCertificateFingerprint(ks)
+                return ks to password
+            } catch (e: Exception) {
+                // Keystore exists but password doesn't match — regenerate it
+                logger.warn("Cannot open keystore ({}), regenerating...", e.message)
+                path.toFile().delete()
+            }
         }
 
         // Auto-generate self-signed certificate
         logger.info("No keystore found at {} — generating self-signed certificate...", path)
 
-        // H7 fix: auto-generate a secure random password instead of using a hardcoded default
-        val password = configuredPassword.ifBlank { generateSecurePassword().also {
+        val password = configuredPassword.ifBlank { derivedPassword.ifBlank { generateSecurePassword().also {
             logger.info("Generated random keystore password — set cluster.keystore_password in nimbus.toml or NIMBUS_CLUSTER_KEYSTORE_PASSWORD env var to persist it")
-        }}
+        } } }
 
         val ipRegex = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
         val extraDomains = extraSans.filter { !ipRegex.matches(it) }
@@ -177,6 +186,13 @@ object TlsHelper {
         val validUntil: String,
         val sans: List<String>
     )
+
+    /** Derives a deterministic keystore password from the cluster token via SHA-256. */
+    private fun deriveKeystorePassword(clusterToken: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest("nimbus-keystore:$clusterToken".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
 
     /** Generates a cryptographically secure random password for keystore protection. */
     private fun generateSecurePassword(length: Int = 32): String {

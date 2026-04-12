@@ -12,9 +12,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.selectAll
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -34,6 +36,7 @@ class MetricsCollector(
     private val flushIntervalMs = 3000L
 
     // Queues for batched writes
+    private val maxQueueSize = 10_000
     private val serviceEventQueue = ConcurrentLinkedQueue<ServiceEventEntry>()
     private val scalingEventQueue = ConcurrentLinkedQueue<ScalingEventEntry>()
     private var flushJob: Job? = null
@@ -50,68 +53,76 @@ class MetricsCollector(
         val targetInstances: Int? = null, val reason: String
     )
 
+    private fun <T> enqueueIfNotFull(queue: ConcurrentLinkedQueue<T>, entry: T, queueName: String) {
+        if (queue.size >= maxQueueSize) {
+            logger.warn("Metrics {} queue full ({} entries), dropping event", queueName, maxQueueSize)
+            return
+        }
+        queue.add(entry)
+    }
+
     fun start(): List<Job> {
         val jobs = mutableListOf<Job>()
 
         // Service lifecycle events — enqueue instead of direct insert
         jobs += eventBus.on<NimbusEvent.ServiceStarting> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "STARTING",
                 serviceName = event.serviceName, groupName = event.groupName, port = event.port
-            ))
+            ), "service")
         }
 
         jobs += eventBus.on<NimbusEvent.ServiceReady> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "READY",
                 serviceName = event.serviceName, groupName = event.groupName
-            ))
+            ), "service")
         }
 
         jobs += eventBus.on<NimbusEvent.ServiceDraining> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "DRAINING",
                 serviceName = event.serviceName, groupName = event.groupName
-            ))
+            ), "service")
         }
 
         jobs += eventBus.on<NimbusEvent.ServiceStopping> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "STOPPING",
                 serviceName = event.serviceName
-            ))
+            ), "service")
         }
 
         jobs += eventBus.on<NimbusEvent.ServiceStopped> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "STOPPED",
                 serviceName = event.serviceName
-            ))
+            ), "service")
         }
 
         jobs += eventBus.on<NimbusEvent.ServiceCrashed> { event ->
-            serviceEventQueue.add(ServiceEventEntry(
+            enqueueIfNotFull(serviceEventQueue, ServiceEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "CRASHED",
                 serviceName = event.serviceName, exitCode = event.exitCode,
                 restartAttempt = event.restartAttempt
-            ))
+            ), "service")
         }
 
         // Scaling events
         jobs += eventBus.on<NimbusEvent.ScaleUp> { event ->
-            scalingEventQueue.add(ScalingEventEntry(
+            enqueueIfNotFull(scalingEventQueue, ScalingEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "SCALE_UP",
                 groupName = event.groupName, currentInstances = event.currentInstances,
                 targetInstances = event.targetInstances, reason = event.reason
-            ))
+            ), "scaling")
         }
 
         jobs += eventBus.on<NimbusEvent.ScaleDown> { event ->
-            scalingEventQueue.add(ScalingEventEntry(
+            enqueueIfNotFull(scalingEventQueue, ScalingEventEntry(
                 timestamp = event.timestamp.toString(), eventType = "SCALE_DOWN",
                 groupName = event.groupName, serviceName = event.serviceName,
                 reason = event.reason
-            ))
+            ), "scaling")
         }
 
         // Start periodic flush loop
@@ -251,13 +262,15 @@ class MetricsCollector(
         }
     }
 
+    private val pruneBatchSize = 5000
+
     private suspend fun pruneOldMetrics() {
         val cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS).toString()
         try {
-            db.query {
-                val deletedServices = ServiceEvents.deleteWhere { timestamp less cutoff }
-                val deletedScaling = ScalingEvents.deleteWhere { timestamp less cutoff }
-                val deletedSamples = ServiceMetricSamples.deleteWhere { timestamp less cutoff }
+            val deletedServices = pruneTableInBatches(ServiceEvents, ServiceEvents.id, ServiceEvents.timestamp, cutoff)
+            val deletedScaling = pruneTableInBatches(ScalingEvents, ScalingEvents.id, ScalingEvents.timestamp, cutoff)
+            val deletedSamples = pruneTableInBatches(ServiceMetricSamples, ServiceMetricSamples.id, ServiceMetricSamples.timestamp, cutoff)
+            if (deletedServices + deletedScaling + deletedSamples > 0) {
                 logger.info(
                     "Metrics retention cleanup: pruned {} service events, {} scaling events, {} metric samples older than {} days",
                     deletedServices, deletedScaling, deletedSamples, retentionDays
@@ -266,5 +279,28 @@ class MetricsCollector(
         } catch (e: Exception) {
             logger.warn("Failed to prune old metrics: {}", e.message)
         }
+    }
+
+    private suspend fun pruneTableInBatches(
+        table: org.jetbrains.exposed.sql.Table,
+        idColumn: org.jetbrains.exposed.sql.Column<Long>,
+        timestampColumn: org.jetbrains.exposed.sql.Column<String>,
+        cutoff: String
+    ): Int {
+        var totalDeleted = 0
+        while (true) {
+            val deleted = db.query {
+                val ids = table.selectAll()
+                    .where { timestampColumn less cutoff }
+                    .limit(pruneBatchSize)
+                    .map { it[idColumn] }
+                if (ids.isEmpty()) return@query 0
+                table.deleteWhere { idColumn inList ids }
+            }
+            totalDeleted += deleted
+            if (deleted < pruneBatchSize) break
+            delay(100) // yield to other writers between batches
+        }
+        return totalDeleted
     }
 }
