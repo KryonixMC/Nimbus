@@ -26,9 +26,29 @@ class WarmPoolManager(
     private val groupManager: GroupManager,
     private val portAllocator: PortAllocator,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val globalMaxServices: Int = 0
 ) {
     private val logger = LoggerFactory.getLogger(WarmPoolManager::class.java)
+
+    init {
+        // Drain warm pool slots when a group is deleted/disabled
+        scope.launch {
+            eventBus.on<NimbusEvent.GroupDeleted> { event ->
+                val drained = drain(event.groupName)
+                if (drained > 0) {
+                    logger.info("Drained {} warm pool service(s) for deleted group '{}'", drained, event.groupName)
+                }
+            }
+        }
+    }
+
+    /** Checks whether the global service cap would be exceeded by adding another service. */
+    private fun wouldExceedGlobalCap(): Boolean {
+        if (globalMaxServices <= 0) return false
+        val totalWarmPool = pools.values.sumOf { it.size }
+        return (registry.getAll().size + totalWarmPool) >= globalMaxServices
+    }
 
     /** Pool of prepared services per group, ready to be taken and started. */
     private val pools = ConcurrentHashMap<String, ConcurrentLinkedDeque<ServiceFactory.PreparedService>>()
@@ -83,6 +103,10 @@ class WarmPoolManager(
         val pool = pools.getOrPut(groupName) { ConcurrentLinkedDeque() }
         var filled = 0
         while (pool.size < targetSize) {
+            if (wouldExceedGlobalCap()) {
+                logger.warn("Global service limit ({}) reached — skipping warm pool fill for group '{}'", globalMaxServices, groupName)
+                break
+            }
             val prepared = prepareForPool(groupName) ?: break
             pool.add(prepared)
             filled++
@@ -138,6 +162,10 @@ class WarmPoolManager(
             val needed = targetSize - currentSize
             var filled = 0
             repeat(needed) {
+                if (wouldExceedGlobalCap()) {
+                    logger.warn("Global service limit ({}) reached — skipping warm pool replenish for group '{}'", globalMaxServices, group.name)
+                    return@repeat
+                }
                 val prepared = prepareForPool(group.name) ?: return@repeat
                 pool.add(prepared)
                 filled++

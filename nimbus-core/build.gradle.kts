@@ -83,7 +83,7 @@ val pluginJar = tasks.register("copyPluginJar", Copy::class) {
     dependsOn(project(":nimbus-bridge").tasks.named("shadowJar"))
     from(project(":nimbus-bridge").tasks.named("shadowJar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
-    rename { "nimbus-bridge.jar" }
+    rename { "nimbus-bridge-${project.version}.jar" }
 }
 
 // Embed the SDK JAR as a resource so Nimbus can auto-deploy it to backend servers

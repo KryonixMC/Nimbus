@@ -44,7 +44,7 @@ class NodeConnection(
     @Volatile var javaVendor: String = ""
 
     /** Remote service handles, keyed by service name */
-    val remoteHandles = mutableMapOf<String, RemoteServiceHandle>()
+    val remoteHandles = java.util.concurrent.ConcurrentHashMap<String, RemoteServiceHandle>()
 
     suspend fun send(message: ClusterMessage) {
         sendMutex.withLock {

@@ -5,9 +5,9 @@ import org.jetbrains.exposed.sql.Table
 // ── Audit Log ──────────────────────────────────────────────
 
 object AuditLog : Table("audit_log") {
-    val id = integer("id").autoIncrement()
+    val id = long("id").autoIncrement()
     val timestamp = varchar("timestamp", 40)
-    val actor = varchar("actor", 128)
+    val actor = varchar("actor", 255)
     val action = varchar("action", 64)
     val target = varchar("target", 256).default("")
     val details = varchar("details", 1024).default("")
@@ -24,7 +24,7 @@ object AuditLog : Table("audit_log") {
 // ── Metrics Tables ──────────────────────────────────────────
 
 object ServiceEvents : Table("service_events") {
-    val id = integer("id").autoIncrement()
+    val id = long("id").autoIncrement()
     val timestamp = varchar("timestamp", 40)
     val eventType = varchar("event_type", 32)
     val serviceName = varchar("service_name", 128)
@@ -72,7 +72,7 @@ object CliSessions : Table("cli_sessions") {
 // last hour" instead of "memory since I opened this tab".
 
 object ServiceMetricSamples : Table("service_metric_samples") {
-    val id = integer("id").autoIncrement()
+    val id = long("id").autoIncrement()
     val timestamp = varchar("timestamp", 40)
     val serviceName = varchar("service_name", 128)
     val groupName = varchar("group_name", 64).nullable()
@@ -85,13 +85,14 @@ object ServiceMetricSamples : Table("service_metric_samples") {
     init {
         index(false, serviceName, timestamp)
         index(false, timestamp)
+        index(false, groupName, timestamp)
     }
 }
 
 // ── Scaling Events ─────────────────────────────────────────
 
 object ScalingEvents : Table("scaling_events") {
-    val id = integer("id").autoIncrement()
+    val id = long("id").autoIncrement()
     val timestamp = varchar("timestamp", 40)
     val eventType = varchar("event_type", 16)
     val groupName = varchar("group_name", 64)

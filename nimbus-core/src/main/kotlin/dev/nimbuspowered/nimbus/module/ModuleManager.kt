@@ -184,12 +184,12 @@ class ModuleManager(
                 module.disable()
                 runBlocking { eventBus.emit(NimbusEvent.ModuleDisabled(module.id, module.name)) }
                 logger.info("Disabled module: {}", module.name)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 logger.error("Failed to disable module '{}': {}", id, e.message, e)
             }
         }
         for (cl in classLoaders) {
-            try { cl.close() } catch (_: Exception) {}
+            try { cl.close() } catch (_: Throwable) {}
         }
         classLoaders.clear()
     }

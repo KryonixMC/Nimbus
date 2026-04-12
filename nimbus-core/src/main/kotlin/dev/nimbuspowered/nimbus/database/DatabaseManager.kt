@@ -8,6 +8,7 @@ import dev.nimbuspowered.nimbus.database.migrations.V2_AuditLog
 import dev.nimbuspowered.nimbus.database.migrations.V3_CliSessions
 import dev.nimbuspowered.nimbus.database.migrations.V4_ServiceMetricSamples
 import dev.nimbuspowered.nimbus.database.migrations.V5_TimestampColumnWidth
+import dev.nimbuspowered.nimbus.database.migrations.V6_IndexesAndColumnFixes
 import dev.nimbuspowered.nimbus.module.Migration
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.Database
@@ -36,6 +37,7 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
         V3_CliSessions,
         V4_ServiceMetricSamples,
         V5_TimestampColumnWidth,
+        V6_IndexesAndColumnFixes,
     )
 
     fun init() {
@@ -129,9 +131,10 @@ class DatabaseManager(private val baseDir: Path, private val config: DatabaseCon
             driverClassName = driver
             username = user
             this.password = password
-            maximumPoolSize = 10
+            maximumPoolSize = config.poolSize
             minimumIdle = 2
             connectionTimeout = 30_000
+            validationTimeout = 5_000
             idleTimeout = 600_000
             maxLifetime = 1_800_000
             connectionTestQuery = "SELECT 1"

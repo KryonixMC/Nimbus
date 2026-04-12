@@ -64,7 +64,7 @@ fun Route.configRoutes(
             toml = replaceTomlValue(toml, "log_events", logEvents.toString(), section = "[console]")
         }
 
-        configPath.writeText(toml)
+        configPath.writeText(toml.replace("\r\n", "\n"))
 
         val changes = mutableListOf<String>()
         request.networkName?.let { changes += "network.name = '$it'" }

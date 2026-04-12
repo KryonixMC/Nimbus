@@ -1,6 +1,13 @@
 package dev.nimbuspowered.nimbus.proxy
 
 import com.akuleshov7.ktoml.Toml
+import com.akuleshov7.ktoml.TomlInputConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
@@ -21,8 +28,10 @@ import kotlin.io.path.*
 class ProxySyncManager(private val proxyDir: Path) {
 
     private val logger = LoggerFactory.getLogger(ProxySyncManager::class.java)
-    private val toml = Toml()
+    private val toml = Toml(inputConfig = TomlInputConfig(ignoreUnknownNames = true))
     private val writeLock = Any()
+    private val debounceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var motdDebounceJob: Job? = null
 
     private var config = ProxySyncConfig()
     private val playerTabOverrides = ConcurrentHashMap<String, String>()
@@ -256,7 +265,13 @@ class ProxySyncManager(private val proxyDir: Path) {
 
     // ── TOML Save ──────────────────────────────────────────────────
 
-    private fun saveMotd() = atomicWrite("motd.toml", buildMotdToml())
+    private fun saveMotd() {
+        motdDebounceJob?.cancel()
+        motdDebounceJob = debounceScope.launch {
+            delay(500)
+            atomicWrite("motd.toml", buildMotdToml())
+        }
+    }
 
     private fun saveTablist() = atomicWrite("tablist.toml", buildTablistToml())
 
@@ -268,7 +283,12 @@ class ProxySyncManager(private val proxyDir: Path) {
             val target = proxyDir.resolve(fileName)
             val tmp = proxyDir.resolve("$fileName.tmp")
             tmp.writeText(content)
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            try {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.copy(tmp, target, StandardCopyOption.REPLACE_EXISTING)
+                Files.deleteIfExists(tmp)
+            }
         }
     }
 

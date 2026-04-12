@@ -89,16 +89,19 @@ class AgentRuntime(
             }
         }
 
-        // Connection loop with reconnection
+        // Connection loop with reconnection (exponential backoff: 1s, 2s, 4s, 8s, ... max 60s)
         var consecutiveSslFailures = 0
+        var consecutiveFailures = 0
         while (running) {
             var wasSslFailure = false
             try {
                 connectAndRun()
                 consecutiveSslFailures = 0
+                consecutiveFailures = 0
             } catch (e: javax.net.ssl.SSLHandshakeException) {
                 wasSslFailure = true
                 consecutiveSslFailures++
+                consecutiveFailures++
                 logger.error("TLS handshake failed: {}", e.message)
                 logger.error("  The controller cert was not trusted.")
                 logger.error("  If this is a cert rotation, re-run setup: java -jar nimbus-agent.jar --setup")
@@ -106,9 +109,11 @@ class AgentRuntime(
             } catch (e: java.security.cert.CertificateException) {
                 wasSslFailure = true
                 consecutiveSslFailures++
+                consecutiveFailures++
                 logger.error("Certificate validation failed: {}", e.message)
                 logger.error("  Re-run setup if the controller cert was rotated: java -jar nimbus-agent.jar --setup")
             } catch (e: java.net.ConnectException) {
+                consecutiveFailures++
                 val url = config.agent.controller
                 logger.error("Connection refused: {}", e.message ?: url)
                 if ("0.0.0.0" in url) {
@@ -118,9 +123,11 @@ class AgentRuntime(
                     logger.error("  Hint: Is the controller running? Is the port open in the firewall?")
                 }
             } catch (e: java.net.UnknownHostException) {
+                consecutiveFailures++
                 logger.error("Cannot resolve host in controller URL: {}", e.message)
                 logger.error("  Hint: Check that the hostname is correct and DNS is working.")
             } catch (e: Exception) {
+                consecutiveFailures++
                 logger.error("Connection lost: {}", e.message ?: e::class.simpleName)
             }
 
@@ -134,7 +141,8 @@ class AgentRuntime(
                     break
                 }
                 wasSslFailure -> 30_000L
-                else -> 5_000L
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s max
+                else -> (1000L * (1L shl (consecutiveFailures - 1).coerceAtMost(5))).coerceAtMost(60_000L)
             }
             logger.info("Reconnecting in {}s...", delayMs / 1000)
             delay(delayMs)

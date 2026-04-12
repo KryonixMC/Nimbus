@@ -169,10 +169,12 @@ class SoftwareResolver {
             if (response.status != HttpStatusCode.OK) return VersionList.EMPTY
             val data = json.decodeFromString<PufferfishCIResponse>(response.bodyAsText())
             // Extract MC major versions from job names like "Pufferfish-1.21"
+            // Filter out very old branches (< 1.19) that are unlikely to receive updates
             val versions = data.jobs
                 .map { it.name }
                 .filter { it.startsWith("Pufferfish-") && !it.contains("Purpur") }
                 .map { it.removePrefix("Pufferfish-") }
+                .filter { isVersionAtLeast(it, "1.19") }
                 .sortedDescending()
             VersionList(stable = versions, snapshots = emptyList())
         } catch (e: Exception) {
@@ -544,7 +546,10 @@ class SoftwareResolver {
             name.contains("icommon") && name.endsWith(".jar")
         } ?: false
         if (!hasICommon) {
-            downloadModrinthMod("icommon", "fabric", modsDir, "iCommon API", mcVersion)
+            val iCommonOk = downloadModrinthMod("icommon", "fabric", modsDir, "iCommon API", mcVersion)
+            if (!iCommonOk) {
+                logger.error("Failed to download iCommon dependency for Cardboard — Cardboard may not work correctly")
+            }
         }
 
         val hasCardboard = modsDir.toFile().listFiles()?.any {

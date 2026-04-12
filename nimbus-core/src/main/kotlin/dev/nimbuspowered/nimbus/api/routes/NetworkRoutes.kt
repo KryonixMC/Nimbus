@@ -49,10 +49,21 @@ fun Route.networkRoutes(
             )
         }
 
+        val uptimeDuration = Duration.between(startedAt, Instant.now())
+        val uptimeHuman = buildString {
+            val h = uptimeDuration.toHours()
+            val m = uptimeDuration.toMinutesPart()
+            val s = uptimeDuration.toSecondsPart()
+            if (h > 0) append("${h}h ")
+            if (h > 0 || m > 0) append("${m}m ")
+            append("${s}s")
+        }
+
         call.respond(StatusResponse(
             networkName = config.network.name,
             online = allServices.any { it.state == ServiceState.READY },
             uptimeSeconds = uptime,
+            uptimeHuman = uptimeHuman,
             totalServices = allServices.size,
             totalPlayers = allServices.sumOf { it.playerCount },
             groups = groupStatuses

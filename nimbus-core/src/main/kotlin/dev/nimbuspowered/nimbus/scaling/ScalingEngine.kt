@@ -47,10 +47,12 @@ class ScalingEngine(
     /** Tracks consecutive zero-player readings per service to avoid acting on transient empties. */
     private val consecutiveZeroReadings = ConcurrentHashMap<String, Int>()
 
-    /** Cooldown tracking: last scale-up time per group to prevent thrashing. */
+    /** Cooldown tracking: last scale-up time per group to prevent thrashing.
+     *  NOTE: These are in-memory only and reset on restart. Post-restart scale events
+     *  may happen sooner than expected since cooldown timers are not persisted. */
     private val lastScaleUp = ConcurrentHashMap<String, Instant>()
 
-    /** Cooldown tracking: last scale-down time per group. */
+    /** Cooldown tracking: last scale-down time per group. See note on [lastScaleUp]. */
     private val lastScaleDown = ConcurrentHashMap<String, Instant>()
 
     /** Static-sync retry backoff: tracks repeated failures per group to avoid

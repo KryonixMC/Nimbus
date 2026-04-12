@@ -63,7 +63,13 @@ class AgentStateStore(baseDir: Path) {
         try {
             stateDir.createDirectories()
             tmpFile.writeText(stateJson.encodeToString(state))
-            tmpFile.moveTo(stateFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            try {
+                tmpFile.moveTo(stateFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                logger.warn("Atomic move not supported, falling back to copy+delete")
+                java.nio.file.Files.copy(tmpFile, stateFile, StandardCopyOption.REPLACE_EXISTING)
+                java.nio.file.Files.deleteIfExists(tmpFile)
+            }
         } catch (e: Exception) {
             logger.error("Failed to save agent state: {}", e.message)
         }

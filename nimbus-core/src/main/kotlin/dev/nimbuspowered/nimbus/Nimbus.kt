@@ -376,7 +376,7 @@ fun nimbusMain() = runBlocking {
         groupManager = groupManager,
         eventBus = eventBus,
         scope = scope,
-        checkIntervalMs = config.controller.heartbeatInterval,
+        checkIntervalMs = config.controller.scalingTickInterval * 1000,
         globalMaxServices = config.controller.maxServices
     )
     val stressTestManager = StressTestManager(registry, groupManager, eventBus, proxySyncManager, scope)
@@ -389,14 +389,15 @@ fun nimbusMain() = runBlocking {
         groupManager = groupManager,
         portAllocator = portAllocator,
         eventBus = eventBus,
-        scope = scope
+        scope = scope,
+        globalMaxServices = config.controller.maxServices
     )
     serviceManager.warmPoolManager = warmPoolManager
 
     // Scaling engine is created here but started AFTER startMinimumInstances()
     // to prevent it from racing the phased startup (proxy must be READY before backends).
     var scalingJob: kotlinx.coroutines.Job? = null
-    logger.info("Scaling engine created (interval: {}ms, start deferred until after initial boot)", config.controller.heartbeatInterval)
+    logger.info("Scaling engine created (interval: {}s, start deferred until after initial boot)", config.controller.scalingTickInterval)
     if (config.bedrock.enabled) {
         logger.info("Bedrock support enabled (Geyser + Floodgate, base port {})", config.bedrock.basePort)
     }

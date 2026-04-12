@@ -67,7 +67,7 @@ fun Route.groupRoutes(
 
             val toml = buildGroupToml(request, groupType, software)
             val configFile = groupsDir.resolve("${request.name.lowercase()}.toml")
-            configFile.writeText(toml)
+            configFile.writeText(toml.replace("\r\n", "\n"))
 
             val groupConfig = buildGroupConfig(request, groupType, software)
             groupManager.reloadGroups(
@@ -96,7 +96,7 @@ fun Route.groupRoutes(
 
             val toml = buildGroupToml(request, groupType, software)
             val configFile = groupsDir.resolve("${name.lowercase()}.toml")
-            configFile.writeText(toml)
+            configFile.writeText(toml.replace("\r\n", "\n"))
 
             val updatedConfig = buildGroupConfig(request, groupType, software)
             val otherGroups = groupManager.getAllGroups()

@@ -92,8 +92,13 @@ export function LoginForm({
 
       setCredentials(url, token);
       router.push("/");
-    } catch {
-      setError("Could not connect to Nimbus controller");
+    } catch (err) {
+      const isNetworkError = err instanceof TypeError && (err.message === "Failed to fetch" || err.message.includes("NetworkError"));
+      if (isNetworkError) {
+        setError("Could not reach the Nimbus controller. Check that the address is correct, the controller is running, and the API port is open.");
+      } else {
+        setError("Could not connect to Nimbus controller");
+      }
     } finally {
       setLoading(false);
     }

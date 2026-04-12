@@ -34,7 +34,9 @@ data class ControllerConfig(
     @SerialName("max_services")
     val maxServices: Int = 20,
     @SerialName("heartbeat_interval")
-    val heartbeatInterval: Long = 5000
+    val heartbeatInterval: Long = 5000,
+    @SerialName("scaling_tick_interval")
+    val scalingTickInterval: Long = 10
 )
 
 @Serializable
@@ -63,7 +65,7 @@ data class ApiConfig(
     @SerialName("jwt_enabled")
     val jwtEnabled: Boolean = false,
     @SerialName("allowed_origins")
-    val allowedOrigins: List<String> = listOf("dashboard.nimbuspowered.org"),
+    val allowedOrigins: List<String> = listOf("https://dashboard.nimbuspowered.org", "http://localhost:3000"),
     @SerialName("trust_forwarded_for")
     val trustForwardedFor: Boolean = false
 )
@@ -75,7 +77,9 @@ data class DatabaseConfig(
     val port: Int = 3306,
     val name: String = "nimbus",
     val username: String = "",
-    val password: String = ""
+    val password: String = "",
+    @SerialName("pool_size")
+    val poolSize: Int = 10
 )
 
 @Serializable

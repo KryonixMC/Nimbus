@@ -322,7 +322,16 @@ class JavaResolver(
                 var entry = zis.nextEntry
                 // Detect common top-level directory to strip
                 val topDir = entry?.name?.substringBefore("/", "")
+                var entryCount = 0
+                var totalExtractedSize = 0L
+                val maxEntries = 50_000
+                val maxTotalSize = 10L * 1024 * 1024 * 1024 // 10 GB
                 while (entry != null) {
+                    entryCount++
+                    if (entryCount > maxEntries) {
+                        logger.error("ZIP extraction aborted: exceeded {} entries", maxEntries)
+                        return false
+                    }
                     val name = entry.name
                     // Strip top-level directory (e.g., "jdk-16.0.2+7/bin/java" -> "bin/java")
                     val stripped = if (topDir != null && topDir.isNotEmpty() && name.startsWith("$topDir/")) {
@@ -340,7 +349,17 @@ class JavaResolver(
                     } else {
                         Files.createDirectories(outPath.parent)
                         Files.newOutputStream(outPath).use { out ->
-                            zis.copyTo(out)
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = zis.read(buf)
+                                if (n <= 0) break
+                                totalExtractedSize += n
+                                if (totalExtractedSize > maxTotalSize) {
+                                    logger.error("ZIP extraction aborted: exceeded {}GB total size", maxTotalSize / (1024 * 1024 * 1024))
+                                    return false
+                                }
+                                out.write(buf, 0, n)
+                            }
                         }
                     }
                     entry = zis.nextEntry

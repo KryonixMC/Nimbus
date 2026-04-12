@@ -86,7 +86,7 @@ class DedicatedServiceManager(
 
     fun writeTOML(config: DedicatedServiceConfig) {
         val file = dedicatedConfigDir.resolve("${config.dedicated.name}.toml")
-        val content = toml.encodeToString(config)
+        val content = toml.encodeToString(config).replace("\r\n", "\n")
         file.writeText(content)
         logger.info("Wrote dedicated config to {}", file)
     }

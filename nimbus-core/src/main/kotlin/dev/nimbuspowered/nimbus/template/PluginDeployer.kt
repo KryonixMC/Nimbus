@@ -1,5 +1,6 @@
 package dev.nimbuspowered.nimbus.template
 
+import dev.nimbuspowered.nimbus.NimbusVersion
 import dev.nimbuspowered.nimbus.config.NimbusConfig
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -91,7 +92,15 @@ class PluginDeployer(private val baseDir: Path) {
     }
 
     private fun deployHubPlugin(globalProxyDir: Path) {
-        deployPlugin(globalProxyDir, "nimbus-bridge.jar", "plugins/nimbus-bridge.jar")
+        val version = NimbusVersion.version
+        val versionedResource = "plugins/nimbus-bridge-${version}.jar"
+        // Try versioned resource first, fall back to unversioned for dev builds
+        val resourcePath = if (javaClass.classLoader.getResource(versionedResource) != null) {
+            versionedResource
+        } else {
+            "plugins/nimbus-bridge.jar"
+        }
+        deployPlugin(globalProxyDir, "nimbus-bridge.jar", resourcePath)
     }
 
     private fun deploySdkPlugin(globalDir: Path) {
