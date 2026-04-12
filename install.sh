@@ -210,6 +210,29 @@ download_nimbus() {
     sudo mkdir -p "$INSTALL_DIR"
     sudo curl -fsSL -o "$INSTALL_DIR/$jar_name" "$jar_url"
 
+    # Verify SHA-256 if a checksum file is available in the release
+    local sha_url
+    sha_url=$(echo "$release_json" | grep -oP '"browser_download_url"\s*:\s*"\K[^"]*sha256[^"]*' | head -1)
+    if [[ -n "$sha_url" ]]; then
+        info "Verifying SHA-256 checksum..."
+        local expected_sha
+        expected_sha=$(curl -fsSL "$sha_url" 2>/dev/null | grep "$jar_name" | awk '{print $1}')
+        if [[ -n "$expected_sha" ]]; then
+            local actual_sha
+            actual_sha=$(sha256sum "$INSTALL_DIR/$jar_name" | awk '{print $1}')
+            if [[ "$expected_sha" == "$actual_sha" ]]; then
+                success "SHA-256 checksum verified"
+            else
+                error "SHA-256 checksum mismatch!"
+                error "  Expected: $expected_sha"
+                error "  Actual:   $actual_sha"
+                exit 1
+            fi
+        else
+            warn "Could not extract checksum for $jar_name from checksum file"
+        fi
+    fi
+
     # Create working directories and set ownership to invoking user
     local real_user="${SUDO_USER:-$(whoami)}"
     sudo mkdir -p "$INSTALL_DIR"/{config/groups,config/modules,templates,services,logs}
@@ -262,7 +285,19 @@ main() {
         echo -e "  ${DIM}Starting Nimbus...${RESET}"
         echo ""
         cd "$INSTALL_DIR"
-        java -Xms256M -Xmx256M --enable-native-access=ALL-UNNAMED --add-opens=java.base/sun.misc=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED -jar "$NIMBUS_JAR"
+        while true; do
+            EXIT_CODE=0
+            java -Xms256M -Xmx256M --enable-native-access=ALL-UNNAMED --add-opens=java.base/sun.misc=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED -jar "$NIMBUS_JAR" || EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 10 ]; then
+                echo -e "${CYAN}[nimbus]${RESET} Restarting after update..."
+                continue
+            else
+                if [ $EXIT_CODE -ne 0 ]; then
+                    echo -e "${YELLOW}[nimbus]${RESET} Exited with code $EXIT_CODE"
+                fi
+                break
+            fi
+        done
     else
         echo -e "  ${DIM}To start manually:${RESET}"
         echo -e "    cd $INSTALL_DIR && java -jar $NIMBUS_JAR"

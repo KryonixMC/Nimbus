@@ -171,6 +171,7 @@ data class StatusResponse(
     val networkName: String,
     val online: Boolean,
     val uptimeSeconds: Long,
+    val uptimeHuman: String,
     val totalServices: Int,
     val totalPlayers: Int,
     val groups: List<GroupStatusResponse>

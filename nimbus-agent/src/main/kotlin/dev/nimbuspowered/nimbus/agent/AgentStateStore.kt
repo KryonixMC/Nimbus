@@ -8,6 +8,8 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.io.path.*
 
+// H9 fix: synchronize read-modify-write operations on state file
+
 private val stateJson = Json {
     prettyPrint = true
     encodeDefaults = true
@@ -43,6 +45,8 @@ class AgentStateStore(baseDir: Path) {
     private val stateDir = baseDir.resolve("state")
     private val stateFile = stateDir.resolve("services.json")
     private val tmpFile = stateDir.resolve("services.json.tmp")
+    // H9 fix: lock for read-modify-write operations to prevent concurrent corruption
+    private val lock = Any()
 
     fun load(): AgentState {
         if (!stateFile.exists()) return AgentState()
@@ -59,31 +63,43 @@ class AgentStateStore(baseDir: Path) {
         try {
             stateDir.createDirectories()
             tmpFile.writeText(stateJson.encodeToString(state))
-            tmpFile.moveTo(stateFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            try {
+                tmpFile.moveTo(stateFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                logger.warn("Atomic move not supported, falling back to copy+delete")
+                java.nio.file.Files.copy(tmpFile, stateFile, StandardCopyOption.REPLACE_EXISTING)
+                java.nio.file.Files.deleteIfExists(tmpFile)
+            }
         } catch (e: Exception) {
             logger.error("Failed to save agent state: {}", e.message)
         }
     }
 
     fun addService(service: PersistedService) {
-        val state = load()
-        val updated = state.copy(
-            services = state.services.filter { it.serviceName != service.serviceName } + service
-        )
-        save(updated)
+        synchronized(lock) {
+            val state = load()
+            val updated = state.copy(
+                services = state.services.filter { it.serviceName != service.serviceName } + service
+            )
+            save(updated)
+        }
     }
 
     fun removeService(serviceName: String) {
-        val state = load()
-        if (state.services.none { it.serviceName == serviceName }) return
-        save(state.copy(services = state.services.filter { it.serviceName != serviceName }))
+        synchronized(lock) {
+            val state = load()
+            if (state.services.none { it.serviceName == serviceName }) return
+            save(state.copy(services = state.services.filter { it.serviceName != serviceName }))
+        }
     }
 
     fun clear() {
-        try {
-            stateFile.deleteIfExists()
-        } catch (e: Exception) {
-            logger.warn("Failed to delete state file: {}", e.message)
+        synchronized(lock) {
+            try {
+                stateFile.deleteIfExists()
+            } catch (e: Exception) {
+                logger.warn("Failed to delete state file: {}", e.message)
+            }
         }
     }
 }
