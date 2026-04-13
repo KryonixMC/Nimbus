@@ -34,14 +34,15 @@ interface BackupEntry {
 }
 
 interface BackupStatus {
-  activeJobs: number;
+  activeJobs: string[];
+  totalBackupCount: number;
   totalSizeBytes: number;
   backupDir: string;
-  targetCount: number;
 }
 
 interface BackupsResponse {
-  backups: BackupEntry[];
+  entries: BackupEntry[];
+  count: number;
 }
 
 interface CreateBackupResponse {
@@ -120,10 +121,10 @@ export default function BackupModulePage() {
   const load = useCallback(async () => {
     try {
       const [r, s] = await Promise.all([
-        apiFetch<BackupsResponse>("/api/backups").catch(() => ({ backups: [] })),
+        apiFetch<BackupsResponse>("/api/backups").catch(() => ({ entries: [], count: 0 })),
         apiFetch<BackupStatus>("/api/backups/status").catch(() => null),
       ]);
-      setBackups(r.backups);
+      setBackups(r.entries ?? []);
       setBackupStatus(s);
     } finally {
       setLoading(false);
@@ -234,14 +235,14 @@ export default function BackupModulePage() {
             <StatCard
               label="Active Jobs"
               icon={ArchiveIcon}
-              tone={backupStatus && backupStatus.activeJobs > 0 ? "primary" : "default"}
-              value={backupStatus?.activeJobs ?? 0}
+              tone={backupStatus && backupStatus.activeJobs.length > 0 ? "primary" : "default"}
+              value={backupStatus?.activeJobs.length ?? 0}
               hint="currently running"
             />
             <StatCard
               label="Total Backups"
               icon={ArchiveIcon}
-              value={backups.length}
+              value={backupStatus?.totalBackupCount ?? backups.length}
               hint="stored entries"
             />
             <StatCard
@@ -260,11 +261,6 @@ export default function BackupModulePage() {
                 >
                   {backupStatus?.backupDir ?? "—"}
                 </span>
-              }
-              hint={
-                backupStatus
-                  ? `${backupStatus.targetCount} configured target${backupStatus.targetCount !== 1 ? "s" : ""}`
-                  : undefined
               }
             />
           </div>

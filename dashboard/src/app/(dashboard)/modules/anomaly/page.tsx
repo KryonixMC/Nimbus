@@ -38,11 +38,11 @@ interface Anomaly {
 }
 
 interface AnomalyStats {
-  activeCount: number;
-  resolvedToday: number;
-  totalCount: number;
+  totalDetected: number;
+  currentActive: number;
+  criticalCount: number;
+  warningCount: number;
   mostAffectedGroup?: string;
-  topServices: { service: string; count: number }[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -243,8 +243,6 @@ export default function AnomalyPage() {
     </Button>
   );
 
-  const topService = stats?.topServices?.[0];
-
   return (
     <>
       <PageHeader
@@ -262,30 +260,31 @@ export default function AnomalyPage() {
             <StatCard
               label="Active Anomalies"
               icon={Activity}
-              tone={stats && stats.activeCount > 0 ? "destructive" : "default"}
-              value={stats?.activeCount ?? 0}
+              tone={stats && stats.currentActive > 0 ? "destructive" : "default"}
+              value={stats?.currentActive ?? 0}
               hint="currently unresolved"
             />
             <StatCard
-              label="Resolved Today"
+              label="Critical"
+              icon={Activity}
+              tone={stats && stats.criticalCount > 0 ? "destructive" : "default"}
+              value={stats?.criticalCount ?? 0}
+              hint="critical severity"
+            />
+            <StatCard
+              label="Warnings"
               icon={Clock}
               tone="primary"
-              value={stats?.resolvedToday ?? 0}
-              hint="since midnight"
+              value={stats?.warningCount ?? 0}
+              hint="warning severity"
             />
             <StatCard
               label="Most Affected Group"
               icon={Server}
               value={stats?.mostAffectedGroup ?? "—"}
-              hint="by anomaly count"
-            />
-            <StatCard
-              label="Top Service"
-              icon={Server}
-              value={topService?.service ?? "—"}
               hint={
-                topService
-                  ? `${topService.count} anomal${topService.count === 1 ? "y" : "ies"} total`
+                stats
+                  ? `${stats.totalDetected} total detected`
                   : "no data yet"
               }
             />

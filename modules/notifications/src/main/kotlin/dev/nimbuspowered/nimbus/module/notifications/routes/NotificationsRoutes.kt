@@ -2,7 +2,9 @@ package dev.nimbuspowered.nimbus.module.notifications.routes
 
 import dev.nimbuspowered.nimbus.module.notifications.NotificationsConfigManager
 import dev.nimbuspowered.nimbus.module.notifications.NotificationsManager
+import dev.nimbuspowered.nimbus.module.notifications.WebhookConfig
 import io.ktor.http.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
@@ -55,6 +57,47 @@ fun Route.notificationsRoutes(manager: NotificationsManager, configManager: Noti
             }
         }
 
+        // POST /api/notifications/webhooks — create or update a webhook
+        post("webhooks") {
+            val req = runCatching { call.receive<SaveWebhookRequest>() }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("INVALID_BODY", "Invalid request body"))
+                return@post
+            }
+            if (req.id.isBlank() || req.type.isBlank() || req.url.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("VALIDATION_FAILED", "id, type, and url are required"))
+                return@post
+            }
+            if (req.type != "discord" && req.type != "slack") {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("VALIDATION_FAILED", "type must be 'discord' or 'slack'"))
+                return@post
+            }
+            val webhook = WebhookConfig(
+                id = req.id,
+                type = req.type,
+                url = req.url,
+                events = req.events,
+                minSeverity = req.minSeverity,
+                batchWindowMs = req.batchWindowMs,
+                rateLimitPerMinute = req.rateLimitPerMinute
+            )
+            configManager.saveWebhook(webhook)
+            manager.reload(configManager.getConfig())
+            call.respond(HttpStatusCode.Created, mapOf("success" to true, "id" to webhook.id))
+        }
+
+        // DELETE /api/notifications/webhooks/{id} — delete a webhook
+        delete("webhooks/{id}") {
+            val id = call.parameters["id"]
+                ?: return@delete call.respond(HttpStatusCode.BadRequest, ErrorResponse("MISSING_ID", "Webhook id is required"))
+            val deleted = configManager.deleteWebhook(id)
+            if (deleted) {
+                manager.reload(configManager.getConfig())
+                call.respond(HttpStatusCode.NoContent)
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("WEBHOOK_NOT_FOUND", "No webhook found with id '$id'"))
+            }
+        }
+
         // POST /api/notifications/reload — reload config from disk
         post("reload") {
             configManager.reload()
@@ -96,6 +139,17 @@ data class TestWebhookResponse(
 data class ReloadResponse(
     val success: Boolean,
     val webhooksLoaded: Int
+)
+
+@Serializable
+data class SaveWebhookRequest(
+    val id: String,
+    val type: String,
+    val url: String,
+    val events: List<String> = emptyList(),
+    val minSeverity: String = "info",
+    val batchWindowMs: Long = 5000L,
+    val rateLimitPerMinute: Int = 30
 )
 
 @Serializable

@@ -59,6 +59,46 @@ class NotificationsConfigManager(private val configDir: Path) {
 
     fun getConfig(): NotificationsConfig = config
 
+    /** Add or update a webhook and persist to disk. */
+    fun saveWebhook(webhook: WebhookConfig) {
+        val current = config.webhooks.toMutableList()
+        val idx = current.indexOfFirst { it.id == webhook.id }
+        if (idx >= 0) current[idx] = webhook else current.add(webhook)
+        config = config.copy(webhooks = current)
+        writeConfig()
+    }
+
+    /** Remove a webhook by id and persist to disk. */
+    fun deleteWebhook(id: String): Boolean {
+        val current = config.webhooks.toMutableList()
+        val removed = current.removeAll { it.id == id }
+        if (!removed) return false
+        config = config.copy(webhooks = current)
+        writeConfig()
+        return true
+    }
+
+    /** Write the current config back to TOML. */
+    private fun writeConfig() {
+        val sb = StringBuilder()
+        sb.appendLine("[global]")
+        sb.appendLine("enabled = ${config.global.enabled}")
+        sb.appendLine()
+        for (wh in config.webhooks) {
+            sb.appendLine("[[webhooks]]")
+            sb.appendLine("id = \"${wh.id}\"")
+            sb.appendLine("type = \"${wh.type}\"")
+            sb.appendLine("url = \"${wh.url}\"")
+            sb.appendLine("events = [${wh.events.joinToString(", ") { "\"$it\"" }}]")
+            sb.appendLine("min_severity = \"${wh.minSeverity}\"")
+            sb.appendLine("batch_window_ms = ${wh.batchWindowMs}")
+            sb.appendLine("rate_limit_per_minute = ${wh.rateLimitPerMinute}")
+            sb.appendLine()
+        }
+        configFile.writeText(sb.toString())
+        logger.info("Saved notifications config ({} webhook(s))", config.webhooks.size)
+    }
+
     // ── TOML Parsing ────────────────────────────────────
 
     private fun parseConfig(content: String): NotificationsConfig {
