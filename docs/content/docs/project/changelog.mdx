@@ -39,6 +39,8 @@ Hardening release: 14 cross-verified audit findings resolved across resilience, 
 - **MySQL migration lock timeout ignored** — `GET_LOCK` return value is now checked; throws `MigrationException` if lock cannot be acquired within 30s
 - **Single bad cluster message kills agent connection** — Per-message exception handling in WebSocket loop. Malformed messages are logged and skipped instead of disconnecting the entire node
 - **Player name injection in network commands** — `/api/players/{name}/send` and `/api/players/{name}/kick` now validate player names against `^[a-zA-Z0-9_]{1,16}$` before passing to Velocity commands
+- **OOM on large file hashing** — SHA-256 functions in ServiceDeployer, ServiceManager, and TemplateRoutes now stream with 64 KB reads instead of `Files.readAllBytes()`, preventing heap exhaustion on large modded worlds/templates
+- **Audit log pruning locks database** — Replaced single-transaction `DELETE` with batched deletion (5,000 rows per batch, 100ms yield between batches), matching the existing MetricsCollector pattern
 
 ---
 
