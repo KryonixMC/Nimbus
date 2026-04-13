@@ -16,7 +16,7 @@ dependencies {
     implementation(project(":nimbus-protocol"))
 
     // Module API (interfaces for NimbusModule, ModuleContext, ModuleCommand)
-    api(project(":nimbus-module-api"))
+    api(project(":modules:api"))
 
 
     // Kotlin Coroutines
@@ -80,16 +80,16 @@ tasks.test {
 
 // Embed the Velocity cloud plugin JAR (shadow, includes SDK) as a resource
 val pluginJar = tasks.register("copyPluginJar", Copy::class) {
-    dependsOn(project(":nimbus-bridge").tasks.named("shadowJar"))
-    from(project(":nimbus-bridge").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    dependsOn(project(":plugins:bridge").tasks.named("shadowJar"))
+    from(project(":plugins:bridge").tasks.named("shadowJar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
     rename { "nimbus-bridge-${project.version}.jar" }
 }
 
 // Embed the SDK JAR as a resource so Nimbus can auto-deploy it to backend servers
 val sdkJar = tasks.register("copySdkJar", Copy::class) {
-    dependsOn(project(":nimbus-sdk").tasks.named("jar"))
-    from(project(":nimbus-sdk").tasks.named("jar").map { (it as Jar).archiveFile })
+    dependsOn(project(":plugins:sdk").tasks.named("jar"))
+    from(project(":plugins:sdk").tasks.named("jar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
     rename { "nimbus-sdk.jar" }
 }
@@ -115,16 +115,16 @@ val downloadFancyNpcs = tasks.register("downloadFancyNpcs") {
 
 // Embed the Display plugin JAR as a resource (extracted at runtime to plugins/)
 val displayJar = tasks.register("copyDisplayJar", Copy::class) {
-    dependsOn(project(":nimbus-display").tasks.named("shadowJar"))
-    from(project(":nimbus-display").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    dependsOn(project(":plugins:display").tasks.named("shadowJar"))
+    from(project(":plugins:display").tasks.named("shadowJar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
     rename { "nimbus-display.jar" }
 }
 
 // Embed the Perms plugin JAR as a resource (extracted at runtime to plugins/)
 val permsJar = tasks.register("copyPermsJar", Copy::class) {
-    dependsOn(project(":nimbus-perms").tasks.named("shadowJar"))
-    from(project(":nimbus-perms").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    dependsOn(project(":plugins:perms").tasks.named("shadowJar"))
+    from(project(":plugins:perms").tasks.named("shadowJar").map { (it as Jar).archiveFile })
     into(layout.buildDirectory.dir("resources/main/plugins"))
     rename { "nimbus-perms.jar" }
 }
@@ -141,13 +141,13 @@ tasks.jar {
 
 // Module JARs to embed in the fat JAR (auto-discovered at runtime via modules.list)
 val embeddedModules = mapOf(
-    ":nimbus-module-perms" to "nimbus-module-perms.jar",
-    ":nimbus-module-display" to "nimbus-module-display.jar",
-    ":nimbus-module-scaling" to "nimbus-module-scaling.jar",
-    ":nimbus-module-players" to "nimbus-module-players.jar",
-    ":nimbus-module-notifications" to "nimbus-module-notifications.jar",
-    ":nimbus-module-backup" to "nimbus-module-backup.jar",
-    ":nimbus-module-anomaly" to "nimbus-module-anomaly.jar"
+    ":modules:perms" to "nimbus-module-perms.jar",
+    ":modules:display" to "nimbus-module-display.jar",
+    ":modules:scaling" to "nimbus-module-scaling.jar",
+    ":modules:players" to "nimbus-module-players.jar",
+    ":modules:notifications" to "nimbus-module-notifications.jar",
+    ":modules:backup" to "nimbus-module-backup.jar",
+    ":modules:anomaly" to "nimbus-module-anomaly.jar"
 )
 
 tasks.shadowJar {

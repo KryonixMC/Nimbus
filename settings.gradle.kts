@@ -1,18 +1,23 @@
 rootProject.name = "nimbus"
 
+// ── Core ────────────────────────────────────────────────
 include("nimbus-core")
 include("nimbus-protocol")
 include("nimbus-agent")
-include("nimbus-sdk")
-include("nimbus-bridge")
-include("nimbus-display")
-include("nimbus-perms")
-include("nimbus-module-api")
-include("nimbus-module-perms")
-include("nimbus-module-display")
-include("nimbus-module-scaling")
-include("nimbus-module-players")
-include("nimbus-module-notifications")
-include("nimbus-module-backup")
-include("nimbus-module-anomaly")
 include("nimbus-cli")
+
+// ── Plugins (Minecraft server JARs) ────────────────────
+include("plugins:sdk")
+include("plugins:bridge")
+include("plugins:display")
+include("plugins:perms")
+
+// ── Modules (controller modules) ───────────────────────
+include("modules:api")
+include("modules:perms")
+include("modules:display")
+include("modules:scaling")
+include("modules:players")
+include("modules:notifications")
+include("modules:backup")
+include("modules:anomaly")

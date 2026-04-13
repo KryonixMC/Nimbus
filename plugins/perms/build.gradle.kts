@@ -11,7 +11,7 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
-    compileOnly(project(":nimbus-sdk"))
+    compileOnly(project(":plugins:sdk"))
     compileOnly("com.google.code.gson:gson:2.11.0")
     // LuckPerms API (only present at runtime if LP installed)
     compileOnly("net.luckperms:api:5.4")
