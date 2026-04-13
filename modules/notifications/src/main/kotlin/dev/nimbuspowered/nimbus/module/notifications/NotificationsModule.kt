@@ -9,6 +9,8 @@ import dev.nimbuspowered.nimbus.console.ConsoleFormatter.info
 import dev.nimbuspowered.nimbus.console.ConsoleFormatter.success
 import dev.nimbuspowered.nimbus.event.EventBus
 import dev.nimbuspowered.nimbus.module.AuthLevel
+import dev.nimbuspowered.nimbus.module.DashboardConfig
+import dev.nimbuspowered.nimbus.module.DashboardSection
 import dev.nimbuspowered.nimbus.module.ModuleContext
 import dev.nimbuspowered.nimbus.module.NimbusModule
 import dev.nimbuspowered.nimbus.module.notifications.commands.NotificationsCommand
@@ -23,6 +25,14 @@ class NotificationsModule : NimbusModule {
     override val name = "Notifications"
     override val version: String get() = NimbusVersion.version
     override val description = "Discord and Slack webhook notifications for Nimbus events"
+
+    override val dashboardConfig = DashboardConfig(
+        icon = "Bell",
+        apiPrefix = "/api/notifications",
+        sections = listOf(
+            DashboardSection("Webhooks", "table", "/webhooks")
+        )
+    )
 
     private val logger = LoggerFactory.getLogger(NotificationsModule::class.java)
     private lateinit var manager: NotificationsManager

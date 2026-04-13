@@ -10,6 +10,8 @@ import dev.nimbuspowered.nimbus.console.ConsoleFormatter.warn
 import dev.nimbuspowered.nimbus.database.DatabaseManager
 import dev.nimbuspowered.nimbus.event.EventBus
 import dev.nimbuspowered.nimbus.group.GroupManager
+import dev.nimbuspowered.nimbus.module.DashboardConfig
+import dev.nimbuspowered.nimbus.module.DashboardSection
 import dev.nimbuspowered.nimbus.module.ModuleContext
 import dev.nimbuspowered.nimbus.module.NimbusModule
 import dev.nimbuspowered.nimbus.module.anomaly.commands.AnomalyCommand
@@ -29,6 +31,16 @@ class AnomalyModule : NimbusModule {
     override val name = "Anomaly Detection"
     override val version: String get() = NimbusVersion.version
     override val description = "Statistical anomaly detection for service metrics"
+
+    override val dashboardConfig = DashboardConfig(
+        icon = "Activity",
+        apiPrefix = "/api/anomaly",
+        sections = listOf(
+            DashboardSection("Active Anomalies", "table", "/current"),
+            DashboardSection("History", "table", "/history"),
+            DashboardSection("Statistics", "stats", "/stats")
+        )
+    )
 
     private val logger = LoggerFactory.getLogger(AnomalyModule::class.java)
 

@@ -10,6 +10,8 @@ import dev.nimbuspowered.nimbus.console.ConsoleFormatter.YELLOW
 import dev.nimbuspowered.nimbus.database.DatabaseManager
 import dev.nimbuspowered.nimbus.event.EventBus
 import dev.nimbuspowered.nimbus.module.AuthLevel
+import dev.nimbuspowered.nimbus.module.DashboardConfig
+import dev.nimbuspowered.nimbus.module.DashboardSection
 import dev.nimbuspowered.nimbus.module.ModuleContext
 import dev.nimbuspowered.nimbus.module.NimbusModule
 import dev.nimbuspowered.nimbus.module.backup.commands.BackupCommand
@@ -22,6 +24,15 @@ class BackupModule : NimbusModule {
     override val name = "Backup"
     override val version: String get() = NimbusVersion.version
     override val description = "Scheduled and on-demand backups of service data and templates"
+
+    override val dashboardConfig = DashboardConfig(
+        icon = "Archive",
+        apiPrefix = "/api/backups",
+        sections = listOf(
+            DashboardSection("Backups", "table", ""),
+            DashboardSection("Status", "stats", "/status")
+        )
+    )
 
     private val logger = LoggerFactory.getLogger(BackupModule::class.java)
     private lateinit var manager: BackupManager
