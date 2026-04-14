@@ -6,6 +6,7 @@ import dev.nimbuspowered.nimbus.api.apiError
 import dev.nimbuspowered.nimbus.event.EventBus
 import dev.nimbuspowered.nimbus.module.punishments.DurationParser
 import dev.nimbuspowered.nimbus.module.punishments.IssuePunishmentRequest
+import dev.nimbuspowered.nimbus.module.punishments.MojangUuidLookup
 import dev.nimbuspowered.nimbus.module.punishments.PunishmentCheckResponse
 import dev.nimbuspowered.nimbus.module.punishments.PunishmentListResponse
 import dev.nimbuspowered.nimbus.module.punishments.PunishmentManager
@@ -23,6 +24,8 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
 
@@ -117,9 +120,35 @@ fun Route.punishmentRoutes(
             if (req.targetName.isBlank()) {
                 return@post call.respond(HttpStatusCode.BadRequest, apiError("targetName is required", ApiErrors.PUNISHMENT_TARGET_INVALID))
             }
-            val uuid = req.targetUuid ?: "00000000-0000-0000-0000-000000000000"
             if (type == PunishmentType.IPBAN && req.targetIp.isNullOrBlank()) {
                 return@post call.respond(HttpStatusCode.BadRequest, apiError("IPBAN requires targetIp", ApiErrors.PUNISHMENT_TARGET_INVALID))
+            }
+
+            // Resolve UUID: explicit > looks-like-UUID > Mojang API lookup by name.
+            // The API is the single source of truth for dashboard / third-party
+            // integrations — without this, those clients can't pre-ban by name.
+            val uuid: String
+            val resolvedName: String
+            val suppliedUuid = req.targetUuid?.trim()?.takeIf { it.isNotBlank() }
+            if (suppliedUuid != null && isUuidShaped(suppliedUuid)) {
+                uuid = suppliedUuid
+                resolvedName = req.targetName
+            } else if (isUuidShaped(req.targetName)) {
+                uuid = req.targetName
+                resolvedName = req.targetName
+            } else {
+                val mojang = withContext(Dispatchers.IO) { MojangUuidLookup.resolve(req.targetName) }
+                if (mojang == null) {
+                    return@post call.respond(
+                        HttpStatusCode.NotFound,
+                        apiError(
+                            "Could not resolve '${req.targetName}' via Mojang — check the name or pass targetUuid explicitly",
+                            ApiErrors.PUNISHMENT_TARGET_INVALID
+                        )
+                    )
+                }
+                uuid = mojang.first
+                resolvedName = mojang.second
             }
 
             val scope = PunishmentScope.parse(req.scope)
@@ -150,7 +179,7 @@ fun Route.punishmentRoutes(
             val record = manager.issue(
                 type = type,
                 targetUuid = uuid,
-                targetName = req.targetName,
+                targetName = resolvedName,
                 targetIp = req.targetIp,
                 duration = duration,
                 reason = req.reason,
@@ -181,6 +210,9 @@ fun Route.punishmentRoutes(
         }
     }
 }
+
+private fun isUuidShaped(s: String): Boolean =
+    s.length == 36 && s[8] == '-' && s[13] == '-' && s[18] == '-' && s[23] == '-'
 
 /**
  * Build the compact response the Bridge expects, including a rendered kickMessage

@@ -11,6 +11,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.slf4j.Logger;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Applies PUNISHMENT_ISSUED events to currently-connected players in real time.
@@ -107,12 +108,16 @@ public class LiveKickHandler {
             }
             String service = conn.getServerInfo().getName();
             String group = deriveGroupName(service);
-            server.getScheduler()
-                .buildTask(new Object(), () -> {
+            // CompletableFuture — Velocity's scheduler needs a registered @Plugin
+            // instance and we don't want to thread that reference here.
+            CompletableFuture.runAsync(() -> {
+                try {
                     JsonObject record = api.checkMute(uuid, group, service);
                     muteCache.put(uuid, group, service, record);
-                })
-                .schedule();
+                } catch (Throwable t) {
+                    logger.warn("Mute refresh failed for {}: {}", uuid, t.getMessage());
+                }
+            });
         });
     }
 

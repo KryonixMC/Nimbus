@@ -67,7 +67,7 @@ public class NimbusPunishmentsPlugin {
         loginListener = new LoginListener(api, logger);
         server.getEventManager().register(this, loginListener);
         server.getEventManager().register(this, new ConnectListener(api, logger));
-        server.getEventManager().register(this, new ChatListener(server, api, muteCache, logger));
+        server.getEventManager().register(this, new ChatListener(api, muteCache, logger));
 
         // Subscribe to the controller's event stream so punishments issued elsewhere
         // (console, dashboard, another staff backend) take effect here immediately.

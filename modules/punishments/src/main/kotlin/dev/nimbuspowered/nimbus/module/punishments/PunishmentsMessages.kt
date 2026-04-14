@@ -41,6 +41,8 @@ data class PunishmentsMessages(
         "&cYou are muted for &f{remaining}&c: &f{reason}",
     val kick: String =
         "&cKicked: &f{reason}",
+    val warn: String =
+        "&e&l⚠ Warning &7from &f{issuer}\n&7Reason: &f{reason}",
 
     // Broadcast templates shown in console / audit
     @kotlinx.serialization.SerialName("broadcast_issued")
@@ -87,7 +89,7 @@ fun PunishmentsMessages.templateFor(type: PunishmentType): String = when (type) 
     PunishmentType.MUTE -> mute
     PunishmentType.TEMPMUTE -> tempmute
     PunishmentType.KICK -> kick
-    PunishmentType.WARN -> kick
+    PunishmentType.WARN -> warn
 }
 
 /**
@@ -139,6 +141,7 @@ class PunishmentsMessagesStore(private val file: Path) {
             appendLine("mute = ${messages.mute.toTomlString()}")
             appendLine("tempmute = ${messages.tempmute.toTomlString()}")
             appendLine("kick = ${messages.kick.toTomlString()}")
+            appendLine("warn = ${messages.warn.toTomlString()}")
             appendLine("broadcast_issued = ${messages.broadcastIssued.toTomlString()}")
             appendLine("broadcast_revoked = ${messages.broadcastRevoked.toTomlString()}")
         }

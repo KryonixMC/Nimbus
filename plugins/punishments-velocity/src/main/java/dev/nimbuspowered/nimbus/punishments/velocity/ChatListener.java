@@ -6,13 +6,13 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.player.PlayerChatEvent;
 import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.slf4j.Logger;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Cancels chat at the proxy for muted players.
@@ -34,11 +34,9 @@ public class ChatListener {
 
     private final PunishmentsApiClient api;
     private final MuteCache cache;
-    private final ProxyServer server;
     private final Logger logger;
 
-    public ChatListener(ProxyServer server, PunishmentsApiClient api, MuteCache cache, Logger logger) {
-        this.server = server;
+    public ChatListener(PunishmentsApiClient api, MuteCache cache, Logger logger) {
         this.api = api;
         this.cache = cache;
         this.logger = logger;
@@ -59,13 +57,17 @@ public class ChatListener {
         String service = event.getServer().getServerInfo().getName();
         String group = deriveGroupName(service);
 
-        // Off the main thread so we don't block the join
-        server.getScheduler()
-            .buildTask(new Object(), () -> {
+        // Off the main thread so we don't block the join. Velocity's scheduler
+        // requires a registered @Plugin instance as owner — we use CompletableFuture
+        // instead so this class has no plugin dependency and the task actually runs.
+        CompletableFuture.runAsync(() -> {
+            try {
                 JsonObject record = api.checkMute(uuid, group, service);
                 cache.put(uuid, group, service, record);
-            })
-            .schedule();
+            } catch (Throwable t) {
+                logger.warn("Mute pre-fetch failed for {}: {}", uuid, t.getMessage());
+            }
+        });
     }
 
     @Subscribe(order = PostOrder.EARLY)

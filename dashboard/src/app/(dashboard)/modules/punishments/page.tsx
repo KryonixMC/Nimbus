@@ -704,6 +704,7 @@ interface MessageTemplates {
   mute: string;
   tempmute: string;
   kick: string;
+  warn: string;
   broadcast_issued: string;
   broadcast_revoked: string;
 }
@@ -714,7 +715,8 @@ const MESSAGE_FIELDS: Array<{ key: keyof MessageTemplates; label: string; hint: 
   { key: "ipban", label: "IP Ban", hint: "Keyed on IP; shown on reconnect" },
   { key: "mute", label: "Mute", hint: "Sent to player when chat is blocked" },
   { key: "tempmute", label: "Tempmute", hint: "Sent per chat attempt while muted" },
-  { key: "kick", label: "Kick / Warn", hint: "One-shot disconnect, also used for warnings" },
+  { key: "kick", label: "Kick", hint: "One-shot disconnect" },
+  { key: "warn", label: "Warn", hint: "Sent to player as a chat notification" },
   { key: "broadcast_issued", label: "Audit: issued", hint: "Console/audit log line" },
   { key: "broadcast_revoked", label: "Audit: revoked", hint: "Console/audit log line" },
 ];
