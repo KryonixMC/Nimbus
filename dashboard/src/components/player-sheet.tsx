@@ -24,8 +24,14 @@ import {
 import { apiFetch } from "@/lib/api";
 import { statusColors } from "@/lib/status";
 import { toast } from "sonner";
-import { Plus, X } from "@/lib/icons";
+import { Plus, X, ChevronDown } from "@/lib/icons";
 import { SectionLabel } from "@/components/section-label";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 
 interface PlayerMeta {
   uuid: string;
@@ -51,6 +57,28 @@ interface PlayerPerms {
   prefix: string;
   suffix: string;
   displayGroup: string;
+}
+
+interface PunishmentSummary {
+  id: number;
+  type: string;
+  reason: string;
+  issuerName: string;
+  issuedAt: string;
+  expiresAt: string | null;
+  active: boolean;
+  scope: string;
+  scopeTarget: string | null;
+}
+
+function punishmentTypeClass(type: string): string {
+  if (["BAN", "TEMPBAN", "IPBAN"].includes(type))
+    return "bg-red-500/15 text-red-600 border-red-500/30 dark:text-red-400";
+  if (["MUTE", "TEMPMUTE"].includes(type))
+    return "bg-orange-500/15 text-orange-600 border-orange-500/30 dark:text-orange-400";
+  if (type === "KICK")
+    return "bg-yellow-500/15 text-yellow-700 border-yellow-500/30 dark:text-yellow-400";
+  return "bg-blue-500/15 text-blue-600 border-blue-500/30 dark:text-blue-400";
 }
 
 interface PermGroupInfo {
@@ -103,8 +131,11 @@ export function PlayerSheet({
   const [allGroups, setAllGroups] = useState<PermGroupInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [newGroup, setNewGroup] = useState("");
+  const [punishments, setPunishments] = useState<PunishmentSummary[]>([]);
+  const [punishmentsOpen, setPunishmentsOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
 
-  function reload() {
+  function reloadPerms() {
     if (!uuid) return;
     apiFetch<PlayerPerms>(`/api/permissions/players/${uuid}`)
       .then(setPerms)
@@ -117,6 +148,9 @@ export function PlayerSheet({
     setMeta(null);
     setHistory([]);
     setPerms(null);
+    setPunishments([]);
+    setPunishmentsOpen(false);
+    setSessionsOpen(false);
     setNewGroup("");
 
     Promise.all([
@@ -132,14 +166,24 @@ export function PlayerSheet({
       )
         .then((d) => d.groups)
         .catch(() => []),
-    ]).then(([m, h, p, g]) => {
+      apiFetch<{ punishments: PunishmentSummary[] }>(
+        `/api/punishments/player/${uuid}?limit=50`
+      )
+        .then((d) => d.punishments)
+        .catch(() => []),
+    ]).then(([m, h, p, g, pn]) => {
       setMeta(m);
       setHistory(h);
       setPerms(p);
       setAllGroups(g);
+      setPunishments(pn);
+      // Open the punishments section by default if anything is active —
+      // makes sure staff see enforcement state at a glance.
+      setPunishmentsOpen(pn.some((x) => x.active));
       setLoading(false);
     });
   }, [uuid, open]);
+
 
   async function addGroup() {
     if (!uuid || !newGroup.trim()) return;
@@ -150,7 +194,7 @@ export function PlayerSheet({
       });
       toast.success(`Group '${newGroup}' added`);
       setNewGroup("");
-      reload();
+      reloadPerms();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add group");
     }
@@ -164,7 +208,7 @@ export function PlayerSheet({
         body: JSON.stringify({ group }),
       });
       toast.success(`Group '${group}' removed`);
-      reload();
+      reloadPerms();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to remove group");
     }
@@ -295,31 +339,140 @@ export function PlayerSheet({
               </section>
             )}
 
-            {history.length > 0 && (
-              <section className="space-y-2">
-                <SectionLabel>Session history</SectionLabel>
-                <div className="space-y-1">
-                  {history.map((entry, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
+            <Collapsible open={punishmentsOpen} onOpenChange={setPunishmentsOpen}>
+              <CollapsibleTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 border-b pb-1.5 text-left focus-visible:outline-none cursor-pointer"
+                  />
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Punishments
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] font-normal">
+                    {punishments.length}
+                  </Badge>
+                  {punishments.some((p) => p.active) && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-red-500/40 text-red-600 dark:text-red-400"
                     >
-                      <div>
-                        <span className="font-medium">{entry.service}</span>
-                        <span className="text-muted-foreground ml-2">
-                          {entry.group}
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground">
-                        {formatDate(entry.connectedAt)}
-                        {entry.disconnectedAt && (
-                          <span> – {formatDate(entry.disconnectedAt)}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                      {punishments.filter((p) => p.active).length} active
+                    </Badge>
+                  )}
                 </div>
-              </section>
+                <ChevronDown
+                  className={cn(
+                    "size-4 text-muted-foreground transition-transform",
+                    punishmentsOpen && "rotate-180"
+                  )}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">
+                {punishments.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">
+                    No punishments on record.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {punishments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="rounded-md border px-3 py-2 text-xs"
+                      >
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge
+                            variant="outline"
+                            className={punishmentTypeClass(p.type)}
+                          >
+                            {p.type}
+                          </Badge>
+                          {p.scope !== "NETWORK" && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+                            >
+                              {p.scope.toLowerCase()}
+                              {p.scopeTarget && <span>: {p.scopeTarget}</span>}
+                            </Badge>
+                          )}
+                          {!p.active && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              inactive
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-1 break-words">{p.reason || "—"}</div>
+                        <div className="text-muted-foreground">
+                          by {p.issuerName} · {formatDate(p.issuedAt)}
+                          {p.expiresAt && <> · until {formatDate(p.expiresAt)}</>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-2 text-[11px] text-muted-foreground">
+                  Manage punishments on the{" "}
+                  <span className="font-medium">Punishments</span> page.
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {history.length > 0 && (
+              <Collapsible open={sessionsOpen} onOpenChange={setSessionsOpen}>
+                <CollapsibleTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 border-b pb-1.5 text-left focus-visible:outline-none cursor-pointer"
+                    />
+                  }
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Session history
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] font-normal"
+                    >
+                      {history.length}
+                    </Badge>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "size-4 text-muted-foreground transition-transform",
+                      sessionsOpen && "rotate-180"
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2">
+                  <div className="space-y-1">
+                    {history.map((entry, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
+                      >
+                        <div>
+                          <span className="font-medium">{entry.service}</span>
+                          <span className="text-muted-foreground ml-2">
+                            {entry.group}
+                          </span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {formatDate(entry.connectedAt)}
+                          {entry.disconnectedAt && (
+                            <span> – {formatDate(entry.disconnectedAt)}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             )}
           </SheetBody>
         )}

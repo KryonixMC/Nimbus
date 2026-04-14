@@ -1,0 +1,12 @@
+name: NimbusPunishmentsBackend
+version: '${version}'
+main: dev.nimbuspowered.nimbus.punishments.backend.NimbusPunishmentsBackendPlugin
+description: Backend-side chat mute enforcement for Nimbus punishments
+author: NimbusPowered
+depend:
+  - NimbusSDK
+folia-supported: true
+permissions:
+  nimbus.punish.bypass:
+    description: Exempt from proxy-enforced mutes
+    default: false

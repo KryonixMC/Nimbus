@@ -19,6 +19,15 @@ project(":nimbus-display").projectDir = file("plugins/display")
 include("nimbus-perms")
 project(":nimbus-perms").projectDir = file("plugins/perms")
 
+include("nimbus-punishments-velocity")
+project(":nimbus-punishments-velocity").projectDir = file("plugins/punishments-velocity")
+
+include("nimbus-punishments-backend")
+project(":nimbus-punishments-backend").projectDir = file("plugins/punishments-backend")
+
+include("nimbus-resourcepacks")
+project(":nimbus-resourcepacks").projectDir = file("plugins/resourcepacks")
+
 // Controller Modules
 include("nimbus-module-api")
 project(":nimbus-module-api").projectDir = file("modules/api")
@@ -34,3 +43,9 @@ project(":nimbus-module-scaling").projectDir = file("modules/scaling")
 
 include("nimbus-module-players")
 project(":nimbus-module-players").projectDir = file("modules/players")
+
+include("nimbus-module-punishments")
+project(":nimbus-module-punishments").projectDir = file("modules/punishments")
+
+include("nimbus-module-resourcepacks")
+project(":nimbus-module-resourcepacks").projectDir = file("modules/resourcepacks")

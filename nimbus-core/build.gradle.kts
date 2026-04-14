@@ -129,8 +129,32 @@ val permsJar = tasks.register("copyPermsJar", Copy::class) {
     rename { "nimbus-perms.jar" }
 }
 
+// Embed the Punishments Velocity plugin JAR as a resource (deployed to proxies at runtime)
+val punishmentsJar = tasks.register("copyPunishmentsJar", Copy::class) {
+    dependsOn(project(":nimbus-punishments-velocity").tasks.named("shadowJar"))
+    from(project(":nimbus-punishments-velocity").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-punishments.jar" }
+}
+
+// Embed the Punishments backend plugin JAR (Paper/Spigot/Folia — chat mute enforcement)
+val punishmentsBackendJar = tasks.register("copyPunishmentsBackendJar", Copy::class) {
+    dependsOn(project(":nimbus-punishments-backend").tasks.named("shadowJar"))
+    from(project(":nimbus-punishments-backend").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-punishments-backend.jar" }
+}
+
+// Embed the Resource Packs plugin JAR as a resource (extracted at runtime to plugins/)
+val resourcePacksJar = tasks.register("copyResourcePacksJar", Copy::class) {
+    dependsOn(project(":nimbus-resourcepacks").tasks.named("shadowJar"))
+    from(project(":nimbus-resourcepacks").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-resourcepacks.jar" }
+}
+
 tasks.processResources {
-    dependsOn(pluginJar, sdkJar, displayJar, permsJar, downloadFancyNpcs)
+    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, punishmentsBackendJar, resourcePacksJar, downloadFancyNpcs)
 }
 
 tasks.jar {
@@ -144,13 +168,15 @@ val embeddedModules = mapOf(
     ":nimbus-module-perms" to "nimbus-module-perms.jar",
     ":nimbus-module-display" to "nimbus-module-display.jar",
     ":nimbus-module-scaling" to "nimbus-module-scaling.jar",
-    ":nimbus-module-players" to "nimbus-module-players.jar"
+    ":nimbus-module-players" to "nimbus-module-players.jar",
+    ":nimbus-module-punishments" to "nimbus-module-punishments.jar",
+    ":nimbus-module-resourcepacks" to "nimbus-module-resourcepacks.jar"
 )
 
 tasks.shadowJar {
     archiveClassifier.set("")
     mergeServiceFiles()
-    dependsOn(pluginJar, sdkJar, displayJar, permsJar, downloadFancyNpcs)
+    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, punishmentsBackendJar, resourcePacksJar, downloadFancyNpcs)
 
     // Embed controller module JARs (extracted by SetupWizard to modules/)
     // These are added only to shadowJar to avoid circular dependency during compileKotlin
