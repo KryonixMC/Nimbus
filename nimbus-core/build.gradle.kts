@@ -137,6 +137,14 @@ val punishmentsJar = tasks.register("copyPunishmentsJar", Copy::class) {
     rename { "nimbus-punishments.jar" }
 }
 
+// Embed the Punishments backend plugin JAR (Paper/Spigot/Folia — chat mute enforcement)
+val punishmentsBackendJar = tasks.register("copyPunishmentsBackendJar", Copy::class) {
+    dependsOn(project(":nimbus-punishments-backend").tasks.named("shadowJar"))
+    from(project(":nimbus-punishments-backend").tasks.named("shadowJar").map { (it as Jar).archiveFile })
+    into(layout.buildDirectory.dir("resources/main/plugins"))
+    rename { "nimbus-punishments-backend.jar" }
+}
+
 // Embed the Resource Packs plugin JAR as a resource (extracted at runtime to plugins/)
 val resourcePacksJar = tasks.register("copyResourcePacksJar", Copy::class) {
     dependsOn(project(":nimbus-resourcepacks").tasks.named("shadowJar"))
@@ -146,7 +154,7 @@ val resourcePacksJar = tasks.register("copyResourcePacksJar", Copy::class) {
 }
 
 tasks.processResources {
-    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, resourcePacksJar, downloadFancyNpcs)
+    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, punishmentsBackendJar, resourcePacksJar, downloadFancyNpcs)
 }
 
 tasks.jar {
@@ -168,7 +176,7 @@ val embeddedModules = mapOf(
 tasks.shadowJar {
     archiveClassifier.set("")
     mergeServiceFiles()
-    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, resourcePacksJar, downloadFancyNpcs)
+    dependsOn(pluginJar, sdkJar, displayJar, permsJar, punishmentsJar, punishmentsBackendJar, resourcePacksJar, downloadFancyNpcs)
 
     // Embed controller module JARs (extracted by SetupWizard to modules/)
     // These are added only to shadowJar to avoid circular dependency during compileKotlin

@@ -60,13 +60,22 @@ class PunishmentsModule : NimbusModule {
         messageStore.loadOrCreate()
 
         if (config?.punishments?.deployPlugin != false) {
-            // Enforcement runs on Velocity (proxy-wide), not on each backend.
-            // The JAR is deployed to every proxy service on prepare via resolveModulePlugins.
+            // Velocity: login/connect blocks + warn delivery + live-kick.
             context.registerPluginDeployment(PluginDeployment(
                 resourcePath = "plugins/nimbus-punishments.jar",
                 fileName = "nimbus-punishments.jar",
                 displayName = "NimbusPunishments",
                 target = PluginTarget.VELOCITY
+            ))
+            // Backend: chat mute enforcement only. Can't live on Velocity because
+            // cancelling signed chat at the proxy disconnects 1.19.1+ clients with
+            // "illegal protocol state". AsyncPlayerChatEvent on the backend fires
+            // before the broadcast and cancels cleanly.
+            context.registerPluginDeployment(PluginDeployment(
+                resourcePath = "plugins/nimbus-punishments-backend.jar",
+                fileName = "nimbus-punishments-backend.jar",
+                displayName = "NimbusPunishmentsBackend",
+                target = PluginTarget.BACKEND
             ))
         }
 

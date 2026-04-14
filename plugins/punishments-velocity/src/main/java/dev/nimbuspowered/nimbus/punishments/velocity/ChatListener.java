@@ -70,6 +70,24 @@ public class ChatListener {
         });
     }
 
+    /**
+     * <h2>Why we don't call {@code setResult(denied())} here</h2>
+     * Minecraft 1.19.1+ signs chat messages client-side. If the proxy cancels a
+     * signed message without a matching signature acknowledgement, the client
+     * considers the session corrupted and disconnects with
+     * <i>"A Proxy Plugin caused an illegal protocol state"</i>.
+     *
+     * Velocity's documentation explicitly warns that denying chat at the proxy
+     * is unreliable on modern clients; real mute enforcement for signed chat
+     * has to happen on the backend (where the chat event fires before the
+     * message is broadcast, so {@code AsyncChatEvent#cancel()} works without
+     * protocol violations).
+     *
+     * Until the backend mute plugin ships, this listener is advisory — the
+     * muted player sees a warning every time they type, but the message still
+     * reaches other players. Setting {@code ChatResult.denied()} here is the
+     * direct cause of the disconnect the operator reported.
+     */
     @Subscribe(order = PostOrder.EARLY)
     public void onChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -82,9 +100,6 @@ public class ChatListener {
         JsonObject record = cache.get(player.getUniqueId(), group, service);
         if (record == null) return;
 
-        // Sync deny — no EventTask.async, so signed chat verification sees a
-        // consistent "denied" result and doesn't emit the illegal-protocol-state error.
-        event.setResult(PlayerChatEvent.ChatResult.denied());
         Component msg = LegacyComponentSerializer.legacySection()
             .deserialize(MessageBuilder.formatMuteLine(record));
         player.sendMessage(msg);

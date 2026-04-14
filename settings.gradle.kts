@@ -22,6 +22,9 @@ project(":nimbus-perms").projectDir = file("plugins/perms")
 include("nimbus-punishments-velocity")
 project(":nimbus-punishments-velocity").projectDir = file("plugins/punishments-velocity")
 
+include("nimbus-punishments-backend")
+project(":nimbus-punishments-backend").projectDir = file("plugins/punishments-backend")
+
 include("nimbus-resourcepacks")
 project(":nimbus-resourcepacks").projectDir = file("plugins/resourcepacks")
 
