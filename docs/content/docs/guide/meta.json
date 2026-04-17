@@ -19,11 +19,18 @@
     "dashboard",
     "remote-cli",
     "multi-node",
+    "cluster-topologies",
     "cluster-tls",
     "bedrock",
     "permissions",
     "punishments",
     "resourcepacks",
-    "stress-testing"
+    "backup",
+    "docker",
+    "doctor",
+    "stress-testing",
+    "---Migration---",
+    "migration-cloudnet",
+    "migration-simplecloud"
   ]
 }

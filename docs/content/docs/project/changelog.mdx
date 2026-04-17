@@ -11,6 +11,97 @@ All notable changes to this project are documented in this file. The format is b
   Nimbus is pre-1.0. Minor releases (0.X.0) may introduce breaking changes. Patch releases (0.x.Y) are backwards-compatible.
 </Callout>
 
+<Callout type="info">
+  The Web Dashboard is versioned independently and has its own release history — see the [Dashboard Changelog](/docs/project/dashboard-changelog).
+</Callout>
+
+---
+
+## [0.10.0] - 2026-04-17
+
+A new first-party **Docker** module: services can opt in to running inside Docker containers instead of as bare Java processes, with hard kernel-enforced resource limits, clean cleanup, and mixed-Java-version support — all while the process path stays the untouched default for the rest of the installation.
+
+### Added
+
+- **Docker module** — Run services as Docker containers, opt-in per group / dedicated via `[docker] enabled = true`
+  - **Bare HTTP/1.1 client over Unix Domain Sockets.** The module talks to the Docker Engine API via JVM 16+ `SocketChannel.open(StandardProtocolFamily.UNIX)` — no new dependencies, no `docker` CLI requirement, and TCP fallback for Docker Desktop / rootless setups (`tcp://localhost:2375`). Pinned to API v1.41 (Docker 20.10 / ~2021) for broad compatibility; verified against 29.4 + API 1.54 in testing
+  - **TTY-mode attach for bidirectional I/O.** Containers are created with `Tty: true` + `OpenStdin: true` + `AttachStdin: true` so Nimbus owns a single hijacked stdio stream — stdout lines flow into the existing `SharedFlow<String>`, and `sendCommand("stop")` writes straight to the Minecraft server's stdin. No RCON, no extra ports
+  - **Resource limits enforced by the kernel.** `memory_limit` maps to cgroup `Memory`, `cpu_limit` to `NanoCpus` (fractional cores supported). `MemorySwap` is pinned to `Memory` to disable swap thrash. Restart policy is fixed to `no` — Nimbus handles restart decisions, not Docker
+  - **Auto image selection.** Picks `eclipse-temurin:17-jre` / `eclipse-temurin:21-jre` based on the server's required Java version; falls back to a configurable default. Per-group override via `[group.docker] java_image = "…"`. First-use pull is automatic via `/images/create`
+  - **Auto network.** `nimbus` bridge network is created on first start; every container attaches to it so they can reach each other by container name. Port mapping is same-port (`host:N → container:N`) so `server.properties` / `velocity.toml` keep their existing port without rewriting
+  - **Bind-mount, not custom images.** The entire service work dir is bind-mounted at `/server` — templates, plugins, JARs, and worlds come from the host filesystem. No Dockerfile authoring, no image build pipeline; Phase 1 ships with this plus a deferred door for pre-built images later
+  - **Container crash recovery.** On controller restart, the module enumerates every `nimbus.managed=true` container and reattaches to the running ones — no service restart. The attach stream picks up fresh stdout and the exit watcher resumes exactly as if the handle had just been created. `ServiceManager.recoverLocalServices()` prefers Docker-reattached handles over `ProcessHandle.adopt()` so the post-restart PID (stale across container rebuilds) doesn't confuse anything
+  - **Docker stats as the memory source.** When a service is container-backed, `ServiceMemoryResolver` reads cgroup memory from `docker stats` instead of `/proc/<pid>/status`. Catches sidecar processes the plain JVM PID would miss; dashboard numbers match `docker stats` exactly
+  - **Fallback on daemon down.** If the daemon isn't reachable at service-start time, the module logs a warning and the service transparently falls back to a bare process — the rest of the installation keeps working. Doctor flags the daemon state so the operator notices
+  - Console command `docker <status|ps|inspect|prune>` with tab completion. Supports inspecting live stats for any container by name or short ID
+  - REST API (ADMIN-only): `GET /api/docker/status`, `GET /api/docker/containers`, `GET /api/docker/containers/{name}` (with live cgroup stats), `POST /api/docker/prune`
+  - Doctor check: reports daemon reachability, API version (warns on pre-1.41), and Nimbus container counts; surfaces in both the `doctor` console command and `/api/doctor`
+
+- **Dashboard — Docker page** at `/modules/docker`
+  - Four status cards: module enabled, daemon reachable, daemon version + API version, total/running container counters
+  - Daemon-offline banner with the configured socket path when reachable=false, so the operator sees *why* opted-in services are running as plain processes
+  - Nimbus-managed container table with state badges (running / created / paused / exited mapped to the `--severity-*` tokens), image, ports, short ID, and a prune action that calls `POST /api/docker/prune`
+  - Polls via `POLL.normal` with visibility pausing; the list is silent on transient failures so a brief daemon hiccup doesn't spam toasts
+- **Dashboard — per-group Docker toggle.** `GroupEditDialog` grew a Docker section: enable switch + memory limit + CPU limit + Java image. Empty fields mean "inherit module default"; when the switch is off, no overrides are written and the TOML stays clean
+- **Dashboard — Docker badge.** The services list renders a sky-blue `Docker` badge next to each containerised service. Backed by a new `backedBy: "docker"` field on `ServiceResponse`
+
+### Core changes (minimal, non-breaking)
+
+All additive — nothing breaks for existing installations that don't enable the module.
+
+- `DockerServiceConfig` on `GroupDefinition` and `DedicatedDefinition` (defaults to `DockerServiceConfig()` with `enabled = false`, so services without a `[docker]` block behave exactly as before)
+- `PreparedService.dockerConfig` populated by `ServiceFactory` from the group/dedicated config
+- `LocalServiceHandleFactory` interface in `nimbus-core/service/` — modules register an alternative `ServiceHandle` factory via `ModuleContext.registerService()`. `ServiceManager.startLocalService` consults it per-start and falls back to `ProcessHandle` when the factory is absent or `isAvailable()` returns false. `recover()` hook on the same interface lets the module reattach to running containers on restart
+- `ServiceMemorySource` interface + `ServiceMemoryResolver.registerSource()` — pluggable memory reader so the Docker module can serve cgroup stats ahead of `/proc`
+- `ServiceHandle.kind: String` with default `"process"` — tagging mechanism so `/api/services` can surface `backedBy` without the core having to know about container implementations
+- `GroupResponse` / `CreateGroupRequest` carry an optional `docker` sub-object. `buildGroupToml` conditionally emits `[group.docker]` only when something's set, so existing TOML files round-trip unchanged
+
+### Notes
+
+- **Phase 1 scope.** The module runs on the controller only — agent-node Docker support, pre-built custom images, Windows named-pipe sockets (`\\.\pipe\docker_engine`), and image-pull progress streaming are all tracked for follow-up phases. TCP via `tcp://localhost:2375` covers the Windows gap today
+- **Podman** is Docker-API-compatible and should work best-effort against the module pointed at a Podman socket, but it's not part of the CI test matrix
+- **Password-less daemon access.** The Nimbus user must be in the `docker` group or the daemon socket must allow the UID. No sudo at runtime
+
+---
+
+## [0.9.1] - 2026-04-15
+
+A new first-party **Backup** module: scheduled tar+zstd snapshots of services, templates, controller config, the state-sync store, and the database, with GFS retention, single-pass SHA-256 manifests, and a full editor on the dashboard.
+
+### Added
+
+- **Backup module** — Scheduled snapshots of all stateful Nimbus data to local `.tar.zst` archives
+  - **Native multi-threaded archiver.** In-JVM pipeline via Apache Commons Compress (`TarArchiveOutputStream`) + zstd-jni (`ZstdOutputStream` with `setWorkers(N)`, `setCloseFrameOnFlush(false)`) running at 3–5× the throughput of piping to `tar --zstd`. The speedup comes from three places: libzstd's parallel compressor (coreutils tar pipes into the single-threaded binary), no fork/exec + stdout pipe stage, and a 256 KiB upstream buffer that keeps the compressor saturated on worlds with thousands of tiny region files
+  - **Single-pass SHA-256.** Each file's hash is computed while the bytes stream through the archiver, written as a trailing `MANIFEST.sha256` entry, and re-checked by `backup verify <id>` — one filesystem read per file, not two
+  - Six scope types: services, dedicated, templates, controller config, state-sync canonical store, database. Each produces one archive per target, independently verifiable and restorable
+  - **Database dumps.** SQLite via `VACUUM INTO` inside an Exposed transaction — atomic, no external tool. MySQL via `mysqldump --single-transaction --routines --triggers --events`, Postgres via `pg_dump --format=custom` — skipped with a `WARN` and a `PARTIAL` row if the tool is missing on `PATH`
+  - **Cron scheduler** with a hand-rolled 5-field POSIX evaluator (`*`, `N`, `N-M`, `N,M,O`, `*/5`, `0-30/5`; Sunday = 0 or 7). Default config ships hourly + daily + weekly schedules
+  - **GFS retention.** Per `(targetType, targetName, scheduleClass)`, Nimbus keeps the N most recent SUCCESS/PARTIAL rows. FAILED rows don't count against the budget — a transient failure doesn't cost you a retained snapshot. `retention.keep_manual = true` (default) makes manual backups immune to automatic pruning
+  - **Quiesce** via the existing `ServiceManager.executeCommand` plumbing — `save-off` + `save-all flush`, configurable wait, `save-on` after archiving. Only applies to services in `READY`/`STARTING` state on the local node; remote-node services are skipped with `PARTIAL` status until cluster streaming lands in a later phase
+  - **Restore** with path-traversal protection — extracts to a staging dir, atomic-renames into the target. Refuses to overwrite a running service unless `--force` is passed
+  - Console command `backup <now|list|status|restore|verify|prune|schedule>` with tab completion
+  - REST API (ADMIN-only): `GET /api/backups`, `GET /api/backups/{id}`, `POST /api/backups/trigger`, `DELETE /api/backups/{id}`, `POST /api/backups/{id}/restore`, `POST /api/backups/{id}/verify`, `GET /api/backups/{id}/download` (streaming), `GET /api/backups/{id}/manifest`, `GET /api/backups/schedules`, `GET /api/backups/status`, `POST /api/backups/prune`, `GET /api/backups/config`, `PUT /api/backups/config`
+  - **Live config editing.** `PUT /api/backups/config` validates (cron syntax, compression level 1..22, unique schedule names, allowed target keys, known retention classes) and atomically rewrites `config/modules/backup/backup.toml` with a deterministic layout + comments. Scheduler is hot-reloaded on success; `400 VALIDATION_FAILED` leaves the in-memory state untouched
+  - **Retention loop** runs automatically every hour in addition to on-demand `backup prune`
+  - Migrations: `BackupV1_Baseline` (v7000 — `backups` + `backup_schedule_log` tables)
+  - Events: `BACKUP_STARTED`, `BACKUP_COMPLETED` (with duration + size), `BACKUP_FAILED`, `BACKUP_RESTORED`, `BACKUP_PRUNED`
+
+- **Dashboard — Backup page** at `/modules/backup` with two tabs:
+  - **Overview**: four stat cards (total / storage / schedules / last run), a schedules table showing last-run status + next-fire time, and a backup history table with inline Verify / Download / Restore / Delete actions. Download goes through an authed blob fetch + client-side `<a download>` so the ADMIN token isn't exposed in URLs. Empty states use call-to-action buttons that jump to the Settings tab or open the "Run backup" dialog, not file paths
+  - **Settings**: full editor for every knob in `backup.toml`. Schedule add/edit dialog with cron field, retention-class pills, and target-selection pills. Retention budgets, scope toggles with hints, compression level + workers (with a note on the 3–5× speedup), quiesce toggle + wait seconds, exclude patterns textarea. Save validates on the server and hot-reloads; errors surface in the page banner with the exact offending field
+  - Polling is visibility-aware and adaptive — 30 s idle, 5 s while a job is running, paused when the tab is hidden. No busy-loop on the global rate limit
+
+### Changed
+
+- **Sidebar breadcrumbs.** `backup`, `punishments`, `resourcepacks`, `doctor`, `stats`, and `login` now have proper capitalized labels instead of falling through to the raw URL segment
+- **Module discovery icons.** The sidebar's `iconMap` gained `Archive` and `HardDrive` mappings so modules with those `DashboardConfig.icon` values render correctly
+- **Dependencies.** `nimbus-core` now shades `com.github.luben:zstd-jni:1.5.6-4` and `org.apache.commons:commons-compress:1.27.1` (~1.8 MB) so modules can rely on them without wiring their own copies
+
+### Notes
+
+- **Phase 1 scope.** Local destination only; remote agent-node services are skipped with `PARTIAL` status. S3/SFTP destinations, cross-snapshot dedup, and cluster streaming are tracked for follow-up work via a `BackupDestination` interface and a new `BackupStreamRequest` cluster message, respectively
+- **No encryption in v1.** Archives contain world data and DB dumps — use filesystem-level or destination-level encryption if needed, and don't expose `data/backups/` via nginx
+
 ---
 
 ## [0.9.0] - 2026-04-14

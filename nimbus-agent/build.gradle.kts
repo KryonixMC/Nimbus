@@ -44,6 +44,22 @@ tasks.shadowJar {
     mergeServiceFiles()
 }
 
+tasks.startScripts {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.named("startShadowScripts") {
+    dependsOn(tasks.jar)
+}
+
+tasks.distTar {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.distZip {
+    dependsOn(tasks.shadowJar)
+}
+
 kotlin {
     jvmToolchain(21)
 }

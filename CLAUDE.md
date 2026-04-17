@@ -74,6 +74,7 @@ Plugins (`plugins/`):
 - `plugins/display` — Display plugin: server selector signs + NPCs via FancyNpcs (Spigot 1.13+ signs, Paper 1.20+ NPCs, Folia compatible)
 - `plugins/punishments` — Punishments plugin: in-game `/ban` `/tempban` `/mute` `/tempmute` `/kick` `/warn` `/unban` `/unmute` `/history` commands + chat mute listener (cross-version, Folia compatible)
 - `plugins/resourcepacks` — Resource packs plugin: applies network-wide packs on player join, 1.20.3+ multi-pack stack, telemetry reporting (cross-version, Folia compatible)
+- (no backup plugin — backup module runs entirely on the controller; no SDK calls into running services)
 
 Controller Modules (`modules/`):
 - `modules/api` — Module API: interfaces for external module developers (NimbusModule, ModuleContext, ModuleCommand, Migration)
@@ -83,9 +84,17 @@ Controller Modules (`modules/`):
 - `modules/players` — Player module: centralized tracking, session history, cross-server management (controller module, auto-deployed)
 - `modules/punishments` — Punishments module: network-wide bans, tempbans, ipbans, mutes, kicks, warnings with auto-expiry loop (migration range 5000+)
 - `modules/resourcepacks` — Resource pack registry: URL-referenced + locally hosted packs, GLOBAL/GROUP/SERVICE assignments, streaming upload with SHA-1 (migration range 6000+)
+- `modules/backup` — Scheduled tar+zstd snapshots (services/dedicated/templates/config/state-sync/database) with GFS retention, single-pass SHA-256 manifest, multi-threaded zstd-jni compression, and live TOML config editing via REST (migration range 7000+)
+- `modules/docker` — Opt-in Docker backend: services run as containers when `[group.docker] enabled = true` is set, otherwise as bare processes. Raw HTTP/1.1 over the Docker Engine socket (no `docker` CLI dep, JVM `UnixDomainSocketAddress`), TTY-mode attach for bidirectional stdin+stdout, cgroup-enforced memory/CPU limits, auto network + image pull, container crash recovery via label-based reattach. Controller-only in Phase 1 — agent-node Docker is a follow-up
 
 Other:
-- `dashboard` — Web Dashboard (ALPHA): Next.js + shadcn/ui management UI, connects to controller REST API + WebSocket. Live at `dashboard.nimbuspowered.org`. Separate app, not embedded in core JAR
+- `dashboard` — Web Dashboard (BETA): Next.js + shadcn/ui management UI, connects to controller REST API + WebSocket. Live at `dashboard.nimbuspowered.org`. Separate app, not embedded in core JAR.
+  - Beta-era conventions:
+    - Every page wraps its body in `PageShell`, which owns the consistent header + loading/empty/error states. Do not reintroduce per-page skeletons or bare status branches.
+    - `useApiResource` is the canonical data hook; no bare `useEffect` + `fetch` in pages. Mutations go through `apiFetch`, which auto-surfaces 4xx/5xx as toasts (opt-out with `{ silent: true }` for user-initiated flows that render their own errors).
+    - Severity colors use CSS variables (`--severity-ok`, `--severity-warn`, `--severity-err`, `--severity-info`). Do not reintroduce hardcoded `emerald-*` / `amber-*` / `destructive` tailwind classes in status UI.
+    - Polling intervals are standardized as `POLL.fast` (3s) / `POLL.normal` (5s) / `POLL.slow` (30s) and pause while the tab is hidden.
+    - Dashboard version lives in `dashboard/package.json` (currently `0.10.0-beta.1`), is injected at build via `next.config.ts`, exposed through `dashboard/src/lib/version.ts`, and the sidebar renders a Beta/Alpha badge reflecting the channel. Dashboard version is independent of the controller patch cadence.
 
 Gradle project names remain unchanged (`:nimbus-sdk`, `:nimbus-module-perms`, etc.) via `projectDir` mappings in `settings.gradle.kts`.
 
@@ -106,7 +115,7 @@ nimbus-core/src/main/kotlin/dev/nimbuspowered/nimbus/
 ├── Nimbus.kt              # Entry point, bootstrap
 ├── api/                   # Ktor REST API + WebSocket (v0.2), ProxyEventRoutes (proxy event endpoint)
 ├── config/                # TOML config loading (NimbusConfig, GroupConfig)
-├── console/               # JLine3 REPL, CommandDispatcher, 30 commands
+├── console/               # JLine3 REPL, CommandDispatcher, 34 commands
 ├── database/              # Exposed ORM: DatabaseManager, MigrationManager, Tables, MetricsCollector, AuditCollector
 ├── event/                 # Coroutine-based EventBus + sealed Events
 ├── group/                 # ServerGroup runtime state, GroupManager
@@ -124,7 +133,7 @@ nimbus-core/src/main/kotlin/dev/nimbuspowered/nimbus/
 └── velocity/              # VelocityConfigGen (auto-manage proxy server list, modded client config)
 # Note: permissions, display code now lives in their respective module JARs
 
-dashboard/src/              # Web Dashboard (Next.js, ALPHA)
+dashboard/src/              # Web Dashboard (Next.js, BETA)
 ├── app/                   # Next.js pages (login, dashboard, groups, services, etc.)
 ├── components/            # React components (shadcn/ui based)
 └── lib/                   # API client, auth, utilities
@@ -141,6 +150,9 @@ dashboard/src/              # Web Dashboard (Next.js, ALPHA)
 - `config/modules/players/` — Player module config (tracking, session history)
 - `config/modules/punishments/messages.toml` — Punishment kick/mute message templates (&-color codes, placeholders `{target}`, `{issuer}`, `{reason}`, `{remaining}`, `{expires}`)
 - `data/resourcepacks/<uuid>.zip` — Locally hosted resource pack files (streamed in, SHA-1 computed during upload)
+- `config/modules/backup/backup.toml` — Backup module config (schedules, retention, scope, excludes, compression); atomically rewritten by `PUT /api/backups/config` with hot-reload
+- `config/modules/docker/docker.toml` — Docker module config (socket, defaults for memory/CPU limits, java image map, network). Per-service overrides live in the group/dedicated TOML under `[group.docker]` / `[dedicated.docker]` with `enabled = true` as the opt-in
+- `data/backups/*.tar.zst` — Local backup archives with trailing `MANIFEST.sha256` entry (one line per file: `<hex-sha256>  <relative/path>`)
 - `config/modules/syncproxy/motd.toml` — MOTD + maintenance mode config
 - `config/modules/syncproxy/tablist.toml` — Tab list header, footer, player format
 - `config/modules/syncproxy/chat.toml` — Chat format settings
@@ -181,7 +193,7 @@ dashboard/src/              # Web Dashboard (Next.js, ALPHA)
 - Bedrock support: Geyser + Floodgate auto-downloaded from GeyserMC API, key.pem centrally managed
 - Permission system: groups, inheritance, tracks, meta, weight, audit log, debug — central DB on controller
 - LuckPerms support: optional provider in NimbusPerms, syncs display data to controller for proxy features
-- Database migrations: `MigrationManager` auto-applies versioned schema changes on startup; core uses V1 (baseline) + V2 (audit); modules register migrations via `ModuleContext.registerMigrations()`. Module-specific ranges: perms 1000+, scaling 2000+, players 3000+, display 4000+, punishments 5000+, resourcepacks 6000+
+- Database migrations: `MigrationManager` auto-applies versioned schema changes on startup; core uses V1 (baseline) + V2 (audit); modules register migrations via `ModuleContext.registerMigrations()`. Module-specific ranges: perms 1000+, scaling 2000+, players 3000+, display 4000+, punishments 5000+, resourcepacks 6000+, backup 7000+
 - Audit logging: `AuditCollector` subscribes to EventBus, batch-writes to `audit_log` table; `audit` console command + `GET /api/audit` endpoint
 - CLI session tracking: `CliSessionTracker` records Remote CLI connections in `cli_sessions` table; `sessions` console command (active/history); `CliSessionConnected`/`CliSessionDisconnected` events displayed in local console
 - Event actor tracking: `NimbusEvent.actor` field identifies trigger source (`system`, `console`, `api:admin`, `api:service`)
@@ -203,7 +215,8 @@ dashboard/src/              # Web Dashboard (Next.js, ALPHA)
 - Player tracking: Bridge reports player events via `POST /api/proxy/events`, Player Module subscribes via EventBus
 - Punishments: controller module holds canonical records + an in-memory cache of active bans/mutes keyed by UUID & IP. Bridge enforces on Velocity `PreLoginEvent` via `/api/punishments/check/{uuid}?ip=` with its own 5s TTL cache; backend plugin enforces mutes on chat. Superseding writes automatically revoke prior active punishments of the same class. Expiry loop deactivates tempbans/tempmutes every 30s (configurable). Permission nodes: `nimbus.punish.ban`, `nimbus.punish.mute`, ..., `nimbus.punish.bypass` (skip mute enforcement)
 - Resource packs: controller module persists pack registry + assignments; backend plugin fetches `/api/resourcepacks/for-group/<group>` on player join with 10s local cache. Pack stack order is GLOBAL < GROUP < SERVICE, priority ascending within scope. Paper 1.20.3+ uses multi-pack UUID API via reflection; older versions fall back to the single highest-priority pack. Local pack files served unauthenticated at `/api/resourcepacks/files/{uuid}.zip` (SHA-1 hash in `setResourcePack` call prevents tampering)
-- Web Dashboard (ALPHA): `dashboard.nimbuspowered.org` — browser-based UI connecting to controller API. Runs entirely client-side, API token stored in browser localStorage. CORS must include dashboard origin
+- Backups: controller module archives services/dedicated/templates/config/state-sync/database into tar+zstd via Apache Commons Compress + zstd-jni with `setWorkers(N)` for native multi-threaded compression (3–5× faster than subprocess `tar --zstd`). Single-pass SHA-256 computed while streaming, written as trailing `MANIFEST.sha256` entry, re-checked by `backup verify`. SQLite DB dump uses `VACUUM INTO` (atomic); MySQL/Postgres shell out to `mysqldump`/`pg_dump` and skip with WARN + PARTIAL status if missing on PATH. Quiesce via existing `ServiceManager.executeCommand` (`save-off`/`save-all flush`/`save-on`). GFS retention per `(targetType, targetName, scheduleClass)`; `keep_manual = true` makes manual backups immune. Cron scheduler uses a hand-rolled 5-field POSIX evaluator. Config edits via `PUT /api/backups/config` validate + rewrite TOML atomically + hot-reload scheduler. Remote-node services are skipped with PARTIAL status (cluster streaming deferred). All routes ADMIN-only
+- Web Dashboard (BETA): `dashboard.nimbuspowered.org` — browser-based UI connecting to controller API. Runs entirely client-side, API token stored in browser localStorage. CORS must include dashboard origin
 
 ## Cross-Version Compatibility
 
@@ -230,7 +243,7 @@ dashboard/src/              # Web Dashboard (Next.js, ALPHA)
 ## API (v0.2)
 
 - Bearer token auth (`Authorization: Bearer <token>`), auto-generated if not configured
-- REST: `/api/services`, `/api/services/health` (aggregated health summary), `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/stress`, `/api/reload`, `/api/shutdown`, `/api/loadbalancer`, `/api/nodes`, `/api/metrics`, `/api/audit` (admin-only audit log), `/api/scaling/*` (smart scaling module), `/api/permissions/*` (perms module), `/api/displays/*` (display module), `/api/players/*` (player module), `/api/console/complete` (tab completion for Remote CLI), `/api/modpacks/*` (modpack import, CurseForge, server pack upload), `/api/plugins/*` (plugin search/install), `/api/software/*` (server software versions), `/api/cluster/bootstrap` (cert material for agent setup wizard, gated by cluster token), `/api/services/{name}/state/{manifest,file,sync}` (state sync pull/push for `[group.sync]` services, served on the TLS cluster port, gated by cluster token)
+- REST: `/api/services`, `/api/services/health` (aggregated health summary), `/api/groups`, `/api/status`, `/api/players`, `/api/maintenance`, `/api/stress`, `/api/reload`, `/api/shutdown`, `/api/loadbalancer`, `/api/nodes`, `/api/metrics`, `/api/audit` (admin-only audit log), `/api/scaling/*` (smart scaling module), `/api/permissions/*` (perms module), `/api/displays/*` (display module), `/api/players/*` (player module), `/api/console/complete` (tab completion for Remote CLI), `/api/modpacks/*` (modpack import, CurseForge, server pack upload), `/api/plugins/*` (plugin search/install), `/api/software/*` (server software versions), `/api/cluster/bootstrap` (cert material for agent setup wizard, gated by cluster token), `/api/services/{name}/state/{manifest,file,sync}` (state sync pull/push for `[group.sync]` services, served on the TLS cluster port, gated by cluster token), `/api/backups/*` (backup module — admin-only: list/trigger/restore/verify/delete/download/prune + `GET|PUT /api/backups/config` for live TOML editing)
 - Proxy events: `POST /api/proxy/events` — generic proxy event reporting (player connect/disconnect/switch)
 - Player module: `/api/players/online`, `/api/players/history/{uuid}`, `/api/players/info/{uuid}`, `/api/players/stats`
 - Punishments module: `GET /api/punishments`, `GET /api/punishments/{id}`, `GET /api/punishments/player/{uuid}` (history), `GET /api/punishments/check/{uuid}?ip=` (fast proxy login check, cached), `GET /api/punishments/mute/{uuid}`, `POST /api/punishments`, `DELETE /api/punishments/{id}` (revoke)

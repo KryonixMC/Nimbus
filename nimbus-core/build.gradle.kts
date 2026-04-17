@@ -59,6 +59,10 @@ dependencies {
     implementation("io.ktor:ktor-server-rate-limit:3.1.1")
     implementation("io.ktor:ktor-server-auth-jwt:3.1.1")
 
+    // Backup module archiver deps (shaded into fat JAR; module uses compileOnly)
+    implementation("com.github.luben:zstd-jni:1.5.6-4")
+    implementation("org.apache.commons:commons-compress:1.27.1")
+
     // Netty engine for cluster server (native TLS/SSL support via sslConnector)
     implementation("io.ktor:ktor-server-netty:3.1.1")
     // Self-signed certificate generation for auto-TLS
@@ -170,7 +174,9 @@ val embeddedModules = mapOf(
     ":nimbus-module-scaling" to "nimbus-module-scaling.jar",
     ":nimbus-module-players" to "nimbus-module-players.jar",
     ":nimbus-module-punishments" to "nimbus-module-punishments.jar",
-    ":nimbus-module-resourcepacks" to "nimbus-module-resourcepacks.jar"
+    ":nimbus-module-resourcepacks" to "nimbus-module-resourcepacks.jar",
+    ":nimbus-module-backup" to "nimbus-module-backup.jar",
+    ":nimbus-module-docker" to "nimbus-module-docker.jar"
 )
 
 tasks.shadowJar {
@@ -196,6 +202,22 @@ tasks.shadowJar {
     from(layout.buildDirectory.dir("tmp")) {
         include("controller-modules/modules.list")
     }
+}
+
+tasks.startScripts {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.named("startShadowScripts") {
+    dependsOn(tasks.jar)
+}
+
+tasks.distTar {
+    dependsOn(tasks.shadowJar)
+}
+
+tasks.distZip {
+    dependsOn(tasks.shadowJar)
 }
 
 kotlin {

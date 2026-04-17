@@ -14,6 +14,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { BroadcastDialog } from "@/components/broadcast-dialog"
 
 /**
  * Breadcrumb labels, mirrored from `app-sidebar.tsx` so that the breadcrumb
@@ -32,10 +33,17 @@ const routeLabels: Record<string, string> = {
   audit: "Audit Log",
   settings: "Settings",
   modules: "Modules",
+  files: "Files",
   syncproxy: "Sync Proxy",
   perms: "Permissions",
   players: "Players",
   display: "Display",
+  punishments: "Punishments",
+  resourcepacks: "Resource Packs",
+  backup: "Backup",
+  doctor: "Doctor",
+  stats: "Stats",
+  login: "Login",
 }
 
 export function SiteHeader() {
@@ -88,6 +96,7 @@ export function SiteHeader() {
           </BreadcrumbList>
         </Breadcrumb>
         <div className="ml-auto flex items-center gap-2">
+          <BroadcastDialog />
           <ThemeToggle />
         </div>
       </div>

@@ -17,18 +17,32 @@
 
 import {
   Activity,
+  Archive,
   ArrowLeft,
   Box,
+  CalendarClock,
+  Container,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
   Clock,
   Cpu,
   Download,
+  HardDrive,
+  History,
   Ellipsis,
   EllipsisVertical,
   ExternalLink,
+  File,
+  Folder,
+  FolderPlus,
   FolderTree,
   Gauge,
   Gavel,
+  ImageIcon,
   LayoutDashboard,
   LoaderCircle,
   LogOut,
@@ -52,6 +66,7 @@ import {
   Shield,
   Signpost,
   Square,
+  Stethoscope,
   Terminal,
   Trash2,
   Upload,
@@ -59,6 +74,7 @@ import {
   Users,
   X,
   Zap,
+  ZoomIn,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,14 +89,28 @@ export type { LucideIcon };
 
 export {
   Activity,
+  Archive,
   ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
   Clock,
+  Container,
   Cpu,
   Download,
+  File,
+  Folder,
+  FolderPlus,
   FolderTree,
+  HardDrive,
+  History,
   Gauge,
   Gavel,
+  ImageIcon,
   MemoryStick,
   Network,
   Package,
@@ -89,6 +119,7 @@ export {
   Play,
   Plug,
   Plus,
+  Radio,
   RefreshCw,
   RotateCw,
   Save,
@@ -99,15 +130,18 @@ export {
   Shield,
   Signpost,
   Square,
+  Stethoscope,
   Trash2,
   Upload,
   UserCheck,
   Users,
   X,
+  ZoomIn,
 };
 
 // Aliases for names used at call sites.
 export const BoxIcon = Box;
+export const ContainerIcon = Container;
 export const ChevronDownIcon = ChevronDown;
 export const EllipsisVerticalIcon = EllipsisVertical;
 export const ExternalLinkIcon = ExternalLink;
@@ -125,6 +159,7 @@ export const PlugIcon = Plug;
 export const RadioIcon = Radio;
 export const ScrollTextIcon = ScrollText;
 export const ServerIcon = Server;
+export const StethoscopeIcon = Stethoscope;
 export const ShieldIcon = Shield;
 export const TerminalIcon = Terminal;
 export const UsersIcon = Users;
