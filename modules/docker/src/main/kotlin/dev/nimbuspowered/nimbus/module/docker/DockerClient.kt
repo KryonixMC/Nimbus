@@ -187,11 +187,34 @@ class DockerClient(endpoint: String) {
         )
     }
 
+    /**
+     * Blocks until the given container exits, returning its exit code.
+     *
+     * Backed by `POST /containers/{id}/wait` — a single long-lived HTTP request
+     * that the daemon completes when the container stops. Much cheaper than
+     * polling `inspect` every second per service. Returns null if the
+     * connection is interrupted or the response can't be parsed.
+     */
+    fun waitForExit(id: String): Int? {
+        return try {
+            val resp = transport.request("POST", "$apiPrefix/containers/$id/wait")
+            if (resp.status != 200) return null
+            val obj = json.parseToJsonElement(resp.bodyText).jsonObject
+            obj["StatusCode"]?.jsonPrimitive?.longOrNull?.toInt()
+        } catch (e: Exception) {
+            logger.debug("waitForExit('{}') ended: {}", id, e.message)
+            null
+        }
+    }
+
     /** Creates a network with [name] if it doesn't already exist. No-op when present. */
     fun ensureNetwork(name: String) {
         // Check existence first so we don't spam errors on the common case.
+        val filter = buildJsonObject {
+            putJsonArray("name") { add(name) }
+        }.toString()
         val listResp = transport.request("GET", "$apiPrefix/networks?filters=" +
-            URLEncoder.encode("{\"name\":[\"$name\"]}", Charsets.UTF_8))
+            URLEncoder.encode(filter, Charsets.UTF_8))
         if (listResp.status == 200) {
             val arr = json.parseToJsonElement(listResp.bodyText).jsonArray
             if (arr.isNotEmpty()) return

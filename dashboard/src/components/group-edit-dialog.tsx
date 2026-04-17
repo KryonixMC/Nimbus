@@ -121,6 +121,9 @@ export function GroupEditDialog({
   const [dockerMemoryLimit, setDockerMemoryLimit] = useState("");
   const [dockerCpuLimit, setDockerCpuLimit] = useState(0);
   const [dockerJavaImage, setDockerJavaImage] = useState("");
+  // Dialog has no UI for `network` yet — we still round-trip the loaded value
+  // so saving doesn't silently blank out an operator-configured network.
+  const [dockerNetwork, setDockerNetwork] = useState("");
 
   useEffect(() => {
     if (!open || !groupName) return;
@@ -149,6 +152,7 @@ export function GroupEditDialog({
         setDockerMemoryLimit(data.docker?.memoryLimit ?? "");
         setDockerCpuLimit(data.docker?.cpuLimit ?? 0);
         setDockerJavaImage(data.docker?.javaImage ?? "");
+        setDockerNetwork(data.docker?.network ?? "");
       })
       .catch(() => {
         // toast already shown by apiFetch
@@ -218,7 +222,7 @@ export function GroupEditDialog({
             memoryLimit: dockerMemoryLimit,
             cpuLimit: dockerCpuLimit,
             javaImage: dockerJavaImage,
-            network: "",
+            network: dockerNetwork,
           },
         }),
       });

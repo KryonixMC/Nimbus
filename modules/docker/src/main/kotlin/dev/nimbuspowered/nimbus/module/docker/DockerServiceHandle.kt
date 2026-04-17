@@ -102,19 +102,24 @@ class DockerServiceHandle(
     }
 
     /**
-     * Polls the container state until it exits, then resolves [exitDeferred].
-     * Lightweight and decoupled from the attach stream — survives stream drops.
+     * Waits for container exit via Docker's `/wait` endpoint — a single
+     * long-lived HTTP request that the daemon completes when the container
+     * stops. No polling, no per-second `inspect` traffic.
+     *
+     * If the wait call fails (daemon gone, connection dropped mid-request) we
+     * fall back to a one-shot `inspect` so handle consumers still get a
+     * best-effort exit code. Decoupled from the attach stream — survives
+     * stream drops.
      */
     private fun launchExitWatcher() {
         scope.launch {
             try {
-                while (isActive) {
-                    val state = inspectState()
-                    if (state == null || state.running == false) {
-                        exitDeferred.complete(state?.exitCode)
-                        break
-                    }
-                    delay(1_000)
+                val code = client.waitForExit(containerId)
+                if (code != null) {
+                    exitDeferred.complete(code)
+                } else {
+                    val state = runCatching { inspectState() }.getOrNull()
+                    exitDeferred.complete(state?.exitCode)
                 }
             } catch (e: Exception) {
                 logger.debug("Exit watcher for '{}' ended: {}", serviceName, e.message)
@@ -123,8 +128,24 @@ class DockerServiceHandle(
         }
     }
 
+    // Cached one-shot stats — `client.stats()` opens a fresh HTTP connection on
+    // each call, and [ServiceMemoryResolver.resolve] hits it per service in REST
+    // handlers. Caching for a few seconds keeps list endpoints snappy under
+    // N-service deployments without losing any real freshness (dashboard polls
+    // every 5s anyway).
+    @Volatile private var statsCachedAt: Long = 0L
+    @Volatile private var statsCached: DockerStats? = null
+    private val statsCacheTtlMs: Long = 3_000L
+
     /** Live memory stats (bytes) and CPU% from the Docker daemon. Null if unavailable. */
-    fun liveStats(): DockerStats? = runCatching { client.stats(containerId) }.getOrNull()
+    fun liveStats(): DockerStats? {
+        val now = System.currentTimeMillis()
+        if (now - statsCachedAt < statsCacheTtlMs) return statsCached
+        val fresh = runCatching { client.stats(containerId) }.getOrNull()
+        statsCached = fresh
+        statsCachedAt = now
+        return fresh
+    }
 
     override suspend fun sendCommand(command: String) {
         withContext(Dispatchers.IO) {

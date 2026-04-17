@@ -113,8 +113,16 @@ class DockerConfigManager(private val configDir: Path) {
     }
 
     private fun parseMemoryToBytes(spec: String): Long {
-        val m = Regex("^(\\d+)\\s*([kKmMgGtT]?)([bB]?)$").matchEntire(spec.trim())
-            ?: return 0L
+        val trimmed = spec.trim()
+        val m = Regex("^(\\d+)\\s*([kKmMgGtT]?)([bB]?)$").matchEntire(trimmed)
+        if (m == null) {
+            // Returning 0 here makes buildContainerSpec omit the Memory cgroup
+            // limit entirely — i.e. an unlimited container. That's surprising
+            // enough that a typo in `memory_limit` shouldn't fail silently.
+            logger.warn("Invalid Docker memory spec '{}' — expected e.g. '2G', '512M'. " +
+                "Falling back to no memory limit for this service.", spec)
+            return 0L
+        }
         val n = m.groupValues[1].toLongOrNull() ?: return 0L
         return when (m.groupValues[2].uppercase()) {
             "T" -> n * 1024L * 1024L * 1024L * 1024L

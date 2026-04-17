@@ -38,6 +38,13 @@ class DockerServiceHandleFactory(
      */
     private val liveHandles = ConcurrentHashMap<String, DockerServiceHandle>()
 
+    // Short TTL cache for ping() — [isAvailable] is called on every service
+    // start, so during bursty scaling (10+ services in a second) we'd otherwise
+    // open 10 sequential Unix-socket connections just to probe the daemon.
+    @Volatile private var pingCachedAt: Long = 0L
+    @Volatile private var pingCachedResult: Boolean = false
+    private val pingCacheTtlMs: Long = 5_000L
+
     fun lookupHandle(serviceName: String): DockerServiceHandle? {
         val h = liveHandles[serviceName] ?: return null
         if (!h.isAlive()) {
@@ -49,7 +56,12 @@ class DockerServiceHandleFactory(
 
     override fun isAvailable(): Boolean {
         if (!configManager.config.docker.enabled) return false
-        return client.ping()
+        val now = System.currentTimeMillis()
+        if (now - pingCachedAt < pingCacheTtlMs) return pingCachedResult
+        val result = client.ping()
+        pingCachedResult = result
+        pingCachedAt = now
+        return result
     }
 
     override suspend fun create(
@@ -97,7 +109,7 @@ class DockerServiceHandleFactory(
         // If a container with the same name is left over from a previous run
         // (ungraceful shutdown / crash), remove it first — Docker rejects
         // create-with-existing-name.
-        removeIfExists(containerName)
+        removeIfExists(containerName, service.name)
 
         val id = client.createContainer(containerName, spec)
         logger.info("Created container '{}' id={} image={} mem={}MB cpu={} for service '{}'",
@@ -167,16 +179,19 @@ class DockerServiceHandleFactory(
         return m?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    private fun removeIfExists(name: String) {
+    private fun removeIfExists(name: String, serviceName: String) {
         try {
             // Container may be findable by name (our deterministic `nimbus-<svc>` form)
-            // or by the `nimbus.service` label we set on create. Handle both.
+            // or by the `nimbus.service` label we set on create. Handle both — the
+            // label was written with the original casing of [serviceName] (e.g.
+            // `Lobby-1`), while [name] is the lowercased container name, so we
+            // must use [serviceName] directly for the label search.
             val inspected = client.inspect(name)
             if (inspected != null) {
                 runCatching { client.removeContainer(name, force = true) }
             }
             val existing = client.listContainers(
-                labels = mapOf("nimbus.service" to name.removePrefix("nimbus-"))
+                labels = mapOf("nimbus.service" to serviceName)
             )
             for (c in existing) {
                 val id = c["Id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,7 +105,13 @@ export default function DockerModulePage() {
       const result = await apiFetch<PruneResponse>("/api/docker/prune", { method: "POST" });
       await containersRes.refetch();
       await statusRes.refetch();
-      alert(`Removed ${result.removed} container(s)${result.errors.length ? `\nErrors:\n${result.errors.join("\n")}` : ""}`);
+      if (result.errors.length) {
+        toast.error(
+          `Removed ${result.removed} container(s), ${result.errors.length} error(s): ${result.errors.join("; ")}`,
+        );
+      } else {
+        toast.success(`Removed ${result.removed} container(s)`);
+      }
     } finally {
       setPruning(false);
     }
