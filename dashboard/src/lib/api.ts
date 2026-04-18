@@ -4,6 +4,9 @@ const API_URL_KEY = "nimbus_api_url";
 const TOKEN_KEY = "nimbus_api_token";
 export const AUTH_KIND_KEY = "nimbus_auth_kind";
 
+// Keep sensitive auth token in memory only (do not persist in localStorage).
+let inMemoryToken = "";
+
 export type AuthKind = "api-token" | "user-session";
 
 export interface UserInfo {
@@ -53,7 +56,9 @@ export function getApiUrl(): string {
 
 export function getToken(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(TOKEN_KEY) || "";
+  // Best-effort cleanup for legacy persisted token value.
+  localStorage.removeItem(TOKEN_KEY);
+  return inMemoryToken;
 }
 
 export function getAuthKind(): AuthKind | null {
@@ -65,24 +70,28 @@ export function getAuthKind(): AuthKind | null {
 
 export function setCredentials(apiUrl: string, token: string) {
   localStorage.setItem(API_URL_KEY, apiUrl);
-  localStorage.setItem(TOKEN_KEY, token);
+  inMemoryToken = token;
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 /** Stores an API-token style credential (long-lived controller token). */
 export function setApiTokenCredentials(apiUrl: string, token: string) {
   localStorage.setItem(API_URL_KEY, apiUrl);
-  localStorage.setItem(TOKEN_KEY, token);
+  inMemoryToken = token;
+  localStorage.removeItem(TOKEN_KEY);
   localStorage.setItem(AUTH_KIND_KEY, "api-token");
 }
 
 /** Stores a user-session style credential (dashboard login token). */
 export function setUserSessionCredentials(apiUrl: string, token: string) {
   localStorage.setItem(API_URL_KEY, apiUrl);
-  localStorage.setItem(TOKEN_KEY, token);
+  inMemoryToken = token;
+  localStorage.removeItem(TOKEN_KEY);
   localStorage.setItem(AUTH_KIND_KEY, "user-session");
 }
 
 export function clearCredentials() {
+  inMemoryToken = "";
   localStorage.removeItem(API_URL_KEY);
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(AUTH_KIND_KEY);
