@@ -385,7 +385,7 @@ export function LoginForm({
             type="button"
             onClick={back}
             aria-label="Back"
-            className="absolute left-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="absolute left-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
           </button>
@@ -435,7 +435,7 @@ export function LoginForm({
           </p>
         </CardHeader>
 
-        <CardContent className="min-h-[260px] px-6 pb-7">
+        <CardContent className="px-6 pb-7">
           {screen === "connect" && (
             <form
               key="s-connect"
