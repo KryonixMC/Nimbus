@@ -10,6 +10,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -373,25 +374,21 @@ export function LoginForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card
-        className={cn(
-          "relative rounded-2xl p-1 shadow-xl shadow-primary/10",
-          "ring-1 ring-primary/10 transition-shadow duration-300",
-          "focus-within:ring-primary/25 focus-within:shadow-primary/15 hover:ring-primary/20"
-        )}
-      >
+      <Card className="relative">
         {showBack && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={back}
             aria-label="Back"
-            className="absolute left-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="absolute left-3 top-3 z-10"
           >
             <ArrowLeft className="size-4" />
-          </button>
+          </Button>
         )}
 
-        <CardHeader className="px-6 pt-6 text-center">
+        <CardHeader className="text-center">
           <div className="mb-3 flex justify-center">
             <Image
               src="/icon.png"
@@ -404,23 +401,18 @@ export function LoginForm({
               // adds visible fuzz on the logo's flat-colour edges.
               unoptimized
               quality={100}
-              className="h-16 w-16 drop-shadow-[0_4px_16px_rgba(88,166,255,0.25)]"
+              className="h-16 w-16"
             />
           </div>
           {heading && (
-            <h1
+            <CardTitle
               key={`h-${screen}-${linkSent}`}
-              className={cn(
-                "text-lg font-semibold tracking-tight",
-                animated
-              )}
+              className={animated}
             >
               {heading}
-            </h1>
+            </CardTitle>
           )}
-          {subheading && (
-            <CardDescription className="mt-1">{subheading}</CardDescription>
-          )}
+          {subheading && <CardDescription>{subheading}</CardDescription>}
           {/* Always-rendered placeholder keeps the header height stable across
              screens so the card doesn't jump when we first learn the URL. */}
           <p
@@ -435,7 +427,7 @@ export function LoginForm({
           </p>
         </CardHeader>
 
-        <CardContent className="px-6 pb-7">
+        <CardContent>
           {screen === "connect" && (
             <form
               key="s-connect"
@@ -833,7 +825,8 @@ function SubmitButton({
   return (
     <Button
       type="submit"
-      className="h-10 w-full gap-2"
+      size="lg"
+      className="w-full"
       disabled={loading || disabled}
     >
       {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
@@ -842,6 +835,12 @@ function SubmitButton({
   );
 }
 
+/**
+ * Method picker button — visual language matches the rest of the app
+ * (stock Button outline tokens, `rounded-3xl` like Inputs). `primary`
+ * still gets the default filled variant so the user's eye lands on it,
+ * but no custom shadows/lifts/tints.
+ */
 function MethodCard({
   title,
   description,
@@ -856,23 +855,17 @@ function MethodCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant={primary ? "secondary" : "outline"}
       onClick={onClick}
-      className={cn(
-        "group flex w-full items-center gap-3 rounded-xl border p-4 text-left",
-        "transition-all duration-200 will-change-transform",
-        "hover:-translate-y-0.5 active:translate-y-0",
-        primary
-          ? "border-primary/40 bg-primary/5 shadow-sm shadow-primary/10 hover:border-primary hover:bg-primary/10 hover:shadow-md hover:shadow-primary/20 hover:ring-2 hover:ring-primary/20"
-          : "border-border hover:border-foreground/20 hover:bg-muted hover:shadow-sm"
-      )}
+      className="group h-auto w-full justify-start gap-3 px-4 py-3 text-left whitespace-normal"
     >
       {icon && <div className="shrink-0">{icon}</div>}
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="font-medium">{title}</span>
         <span className="text-xs text-muted-foreground">{description}</span>
       </div>
-    </button>
+    </Button>
   );
 }

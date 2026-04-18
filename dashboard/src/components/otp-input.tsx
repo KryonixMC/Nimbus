@@ -146,13 +146,15 @@ export function OtpInput({
           onFocus={(e) => e.target.select()}
           aria-label={ariaLabel ? `${ariaLabel} digit ${i + 1}` : `Digit ${i + 1}`}
           className={cn(
-            // Fixed geometry so adding/removing digits never shifts layout.
-            "h-12 w-10 shrink-0 rounded-md border bg-transparent text-center font-mono text-lg",
-            "outline-none transition-colors",
-            "focus:border-primary focus:ring-2 focus:ring-primary/20",
-            invalid
-              ? "border-[color:var(--severity-err)]/60"
-              : "border-border hover:border-primary/40",
+            // Matches the app's Input primitive: rounded-3xl pill, bg-input/50,
+            // transparent border with focus-ring token. Fixed geometry so
+            // the row never reflows as digits are typed.
+            "h-11 w-10 shrink-0 rounded-2xl border border-transparent bg-input/50",
+            "text-center font-mono text-lg",
+            "outline-none transition-[color,box-shadow,background-color]",
+            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30",
+            invalid &&
+              "border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40",
             disabled && "cursor-not-allowed opacity-60"
           )}
         />
