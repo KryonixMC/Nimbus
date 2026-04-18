@@ -9,26 +9,41 @@ The Nimbus Dashboard (v0.11+) supports per-user login tied to Minecraft accounts
 
 ## How users sign in
 
-Two flavours, both verified via the user's in-game Minecraft session. No passwords, no Microsoft SSO (3rd-party apps can't do Mojang OAuth).
+Three paths, all anchored to a real Minecraft identity. No passwords, no Microsoft SSO (3rd-party apps can't do Mojang OAuth). The dashboard login screen shows them side-by-side as equal-weight choice cards — pick whatever fits the moment.
 
 ### Login Code
 
-1. Player joins any Nimbus-managed server, types `/dashboard login`.
+The friction-free default: works from any device, no prior setup.
+
+1. Player joins any Nimbus-managed server and types `/nimbus dashboard login`.
 2. Chat reply: `§a[Nimbus] §fYour login code: §e483 927 §7(60s valid).`
-3. Player opens the dashboard → selects the **Minecraft Account** tab → types the 6-digit code.
+3. Player opens the dashboard → picks the **Minecraft Account** card → types the 6-digit code.
 4. Session created. Sidebar populates with only the pages the user's permissions allow.
 
 ### Magic Link ✨
 
-1. On the login page, switch to the **Magic Link** sub-toggle.
-2. Type your username → dashboard responds with "Check your in-game chat ✨".
-3. In-game chat message: `§d✨ §f[Nimbus] §fYour magic login link is ready! §e§l[Click to sign in]§r §7(60s valid)`.
-4. Clicking opens the dashboard with `?link=<token>` → auto-consumed, URL cleaned up, session created.
+Fastest path when you're already logged into a proxy: one click in chat, no typing.
 
-The magic-link flow can also be triggered from inside the game: `/dashboard login link`.
+1. In-game: `/nimbus dashboard login link`.
+2. Chat message: `§d✨ §f[Nimbus] §fYour magic login link is ready! §e§l[Click to sign in]§r §7(60s valid)`.
+3. Clicking opens the dashboard with `?link=<token>` → auto-consumed, URL cleaned up, session created.
 
 <Callout type="info">
-Operators can disable magic-link login entirely via `magic_link_enabled = false` in `config/modules/auth/auth.toml`, forcing code-only.
+The dashboard UI no longer offers a "Send me a magic link" form — the in-game command is the single entry point, so players always prove they're at the keyboard of the target account before the link is dispatched. Operators can still disable the feature entirely via `magic_link_enabled = false` in `config/modules/auth/auth.toml`.
+</Callout>
+
+### Passkey / WebAuthn
+
+One-time enrollment from an existing session, then Touch ID / Windows Hello / a security key replaces the in-game round-trip entirely.
+
+1. Sign in once via code or magic link.
+2. Go to **Profile → Security → Passkeys**, click **Add passkey**, give it a label (e.g. "MacBook Touch ID"), and complete the platform prompt.
+3. Next login: dashboard detects WebAuthn support, shows the **Passkey** card as the first option. Click it → platform prompt → done. No chat, no Minecraft server reachable required.
+
+Passkeys are discoverable credentials keyed on the MC UUID, so the browser offers the right account directly — you never type a username.
+
+<Callout type="info">
+Passkey login is **offline** — it doesn't require a Nimbus-managed proxy to be reachable from the client. Code and magic-link logins require a live proxy so the player can receive the chat challenge. Keep at least one enrolled passkey or a set of [TOTP recovery codes](#two-factor-authentication-totp) per admin so you can always get in, even during an incident.
 </Callout>
 
 ## Two-factor authentication (TOTP)
@@ -178,6 +193,12 @@ nimbus.dashboard.admin
 
 API tokens are treated as implicit `nimbus.dashboard.admin` — every existing integration keeps its full access without configuration changes.
 
+## Session management
+
+Every signed-in user has a **Sessions** card at `/profile/security` listing the devices they're currently authenticated from — browser/OS hint, last-used timestamp, and the current session highlighted. Each row has a **Revoke** action; the card-level **Sign out everywhere else** button keeps the active session and drops every sibling in one call.
+
+Admins can still globally boot a user via the service-token `POST /api/auth/logout-all` path (called by the in-game `/nimbus dashboard logout-all` command), which is the right move if you suspect an account compromise.
+
 ## Security notes
 
 - Session tokens are 256-bit URL-safe random. Only `sha256(token)` is stored — a DB leak cannot be replayed as a valid session.
@@ -185,6 +206,7 @@ API tokens are treated as implicit `nimbus.dashboard.admin` — every existing i
 - Magic-link tokens carry more leak surface than codes (URL history, referrer, clipboard) — the login page sets `Referrer-Policy: no-referrer`, consumes the token on load, and strips it from the URL via `history.replaceState`.
 - TOTP secrets are AES-GCM encrypted at rest using a per-install key in `config/modules/auth/session.key` (auto-generated, chmod 600).
 - Recovery codes are SHA-256 hashed and single-use.
-- Rate limits: 5 code/magic-link issuances per minute per UUID; global 120/min request limit already applies.
+- Passkey credentials store only the COSE public key + a monotonic sign counter. The private key never leaves the authenticator; controller-side compromise cannot forge an assertion. Sign-counter rollback triggers a failed login and logs a warning (possible cloned-authenticator indicator).
+- Rate limits: 5 code/magic-link issuances per minute per UUID; global 120/min request limit already applies. Passkey ceremonies are bounded by a configurable `challenge_ttl_seconds` (default 300s) and a per-user credential cap (default 10).
 
 See [Auth config reference](/docs/config/auth) for tuneables.
