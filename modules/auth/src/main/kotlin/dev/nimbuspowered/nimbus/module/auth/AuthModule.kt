@@ -19,9 +19,12 @@ import dev.nimbuspowered.nimbus.module.auth.routes.PlayerLookup
 import dev.nimbuspowered.nimbus.module.auth.routes.authPublicDeliveryRoutes
 import dev.nimbuspowered.nimbus.module.auth.routes.authRoutes
 import dev.nimbuspowered.nimbus.module.auth.routes.authServiceRoutes
+import dev.nimbuspowered.nimbus.module.auth.routes.profileRoutes
 import dev.nimbuspowered.nimbus.module.auth.service.LoginChallengeService
+import dev.nimbuspowered.nimbus.module.auth.service.PendingTotpStore
 import dev.nimbuspowered.nimbus.module.auth.service.PermissionResolver
 import dev.nimbuspowered.nimbus.module.auth.service.SessionService
+import dev.nimbuspowered.nimbus.module.auth.service.TotpService
 import dev.nimbuspowered.nimbus.module.service
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -64,6 +67,8 @@ class AuthModule : NimbusModule {
     private lateinit var challengeService: LoginChallengeService
     private lateinit var sessionService: SessionService
     private lateinit var permissionResolver: PermissionResolver
+    private lateinit var totpService: TotpService
+    private lateinit var pendingTotpStore: PendingTotpStore
     private lateinit var context: ModuleContext
 
     override suspend fun init(context: ModuleContext) {
@@ -76,7 +81,7 @@ class AuthModule : NimbusModule {
             baseDir = context.baseDir
         )
         authConfig = configStore.loadOrCreate()
-        configStore.ensureKey(authConfig)
+        val encryptionKey = configStore.ensureKey(authConfig)
 
         messagesStore = AuthMessagesStore(context.moduleConfigDir(id))
         authMessages = messagesStore.loadOrCreate()
@@ -104,6 +109,8 @@ class AuthModule : NimbusModule {
         challengeService = LoginChallengeService(db, configSupplier)
         sessionService = SessionService(db, configSupplier)
         permissionResolver = PermissionResolver(context)
+        totpService = TotpService(db, configSupplier, encryptionKey)
+        pendingTotpStore = PendingTotpStore()
 
         // Prefer the core `[dashboard] public_url` so operators only have to
         // set the URL in one place. Falls back to the module's own config
@@ -134,10 +141,27 @@ class AuthModule : NimbusModule {
             auth = AuthLevel.SERVICE
         )
 
-        // Public block: consume-challenge, logout, me — these handle their
-        // own bearer-session auth because they run before/without a service token.
+        // Public block: consume-challenge, totp-verify, logout, me — handle
+        // their own bearer-session auth because they run before/without a
+        // service token.
         context.registerRoutes(
-            block = { authRoutes(challengeService, sessionService, permissionResolver, configSupplier) },
+            block = {
+                authRoutes(
+                    challengeService,
+                    sessionService,
+                    permissionResolver,
+                    totpService,
+                    pendingTotpStore,
+                    configSupplier
+                )
+            },
+            auth = AuthLevel.NONE
+        )
+
+        // Profile routes — user-scoped TOTP enroll/confirm/disable. All
+        // endpoints require a valid dashboard session (validated inline).
+        context.registerRoutes(
+            block = { profileRoutes(sessionService, totpService) },
             auth = AuthLevel.NONE
         )
 
@@ -161,6 +185,7 @@ class AuthModule : NimbusModule {
 
         context.registerService(LoginChallengeService::class.java, challengeService)
         context.registerService(SessionService::class.java, sessionService)
+        context.registerService(TotpService::class.java, totpService)
         context.registerService(SessionValidator::class.java, SessionValidator { raw ->
             sessionService.validate(raw)
         })

@@ -9,8 +9,10 @@ import dev.nimbuspowered.nimbus.module.PermissionSet
 import dev.nimbuspowered.nimbus.module.auth.AuthConfig
 import dev.nimbuspowered.nimbus.module.auth.service.ChallengeKind
 import dev.nimbuspowered.nimbus.module.auth.service.LoginChallengeService
+import dev.nimbuspowered.nimbus.module.auth.service.PendingTotpStore
 import dev.nimbuspowered.nimbus.module.auth.service.PermissionResolver
 import dev.nimbuspowered.nimbus.module.auth.service.SessionService
+import dev.nimbuspowered.nimbus.module.auth.service.TotpService
 import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -28,6 +30,9 @@ object AuthErrors {
     const val AUTH_DISABLED = "AUTH_DISABLED"
     const val AUTH_SESSION_INVALID = "AUTH_SESSION_INVALID"
     const val PLAYER_OFFLINE = "PLAYER_OFFLINE"
+    const val AUTH_TOTP_REQUIRED = "AUTH_TOTP_REQUIRED"
+    const val AUTH_TOTP_INVALID = "AUTH_TOTP_INVALID"
+    const val AUTH_TOTP_ALREADY_ENABLED = "AUTH_TOTP_ALREADY_ENABLED"
 }
 
 @Serializable
@@ -63,12 +68,29 @@ data class UserInfo(
     val totpEnabled: Boolean
 )
 
+/**
+ * Unified consume response. When TOTP is active for the user we return a
+ * `challengeId` instead of a session token — the dashboard then posts it
+ * with the authenticator code to `/api/auth/totp-verify` to receive the
+ * real session.
+ */
 @Serializable
 data class ConsumeChallengeResponse(
+    val token: String? = null,
+    val expiresAt: Long? = null,
+    val user: UserInfo? = null,
+    val totpRequired: Boolean = false,
+    val challengeId: String? = null
+)
+
+@Serializable
+data class TotpVerifyRequest(val challengeId: String, val code: String)
+
+@Serializable
+data class TotpVerifyResponse(
     val token: String,
     val expiresAt: Long,
-    val user: UserInfo,
-    val totpRequired: Boolean = false
+    val user: UserInfo
 )
 
 /** Dashboard-initiated magic-link delivery request. */
@@ -304,13 +326,17 @@ fun Route.authRoutes(
     challengeService: LoginChallengeService,
     sessionService: SessionService,
     permissionResolver: PermissionResolver,
+    totpService: TotpService,
+    pendingTotpStore: PendingTotpStore,
     configSupplier: () -> AuthConfig
 ) {
     route("/api/auth") {
 
         /**
          * Unified consume endpoint: accepts either a 6-digit code or a
-         * magic-link token. Returns a real session + user profile.
+         * magic-link token. If the user has TOTP enabled we defer session
+         * creation and hand back a `challengeId` the dashboard trades in
+         * at `/api/auth/totp-verify`. Otherwise a real session is issued.
          */
         post("consume-challenge") {
             val req = runCatching { call.receive<ConsumeChallengeRequest>() }.getOrNull()
@@ -331,6 +357,27 @@ fun Route.authRoutes(
                 ChallengeKind.MAGIC_LINK -> "magic_link"
             }
 
+            val totpEnabled = totpService.isEnabled(consumed.uuid)
+
+            // `require_for_admin` is enforced at the UI layer (dashboard
+            // prompts enrollment on first login). We deliberately do not
+            // block admin login here — that would lock out any operator
+            // whose TOTP device is lost before disabling the flag.
+            if (totpEnabled) {
+                val pending = pendingTotpStore.create(
+                    uuid = uuid,
+                    name = consumed.name,
+                    permissions = permissions,
+                    ip = call.request.local.remoteAddress,
+                    userAgent = call.request.headers["User-Agent"],
+                    loginMethod = loginMethod
+                )
+                return@post call.respond(ConsumeChallengeResponse(
+                    totpRequired = true,
+                    challengeId = pending.challengeId
+                ))
+            }
+
             val session = sessionService.issue(
                 uuid = uuid,
                 name = consumed.name,
@@ -348,9 +395,52 @@ fun Route.authRoutes(
                     name = consumed.name,
                     permissions = permissions.asSet().toList(),
                     isAdmin = permissions.has(PermissionSet.ADMIN_NODE),
-                    totpEnabled = false  // Phase 4
+                    totpEnabled = false
                 ),
                 totpRequired = false
+            ))
+        }
+
+        /**
+         * Trades a pending TOTP challenge-id + authenticator code for a real
+         * session. Recovery codes are accepted here too (single-use, same
+         * endpoint) so users can still log in with a lost device.
+         */
+        post("totp-verify") {
+            val req = runCatching { call.receive<TotpVerifyRequest>() }.getOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest,
+                    apiError("challengeId + code required", ApiErrors.VALIDATION_FAILED))
+
+            val pending = pendingTotpStore.peek(req.challengeId)
+                ?: return@post call.respond(HttpStatusCode.Unauthorized,
+                    apiError("Invalid or expired TOTP challenge", AuthErrors.AUTH_CHALLENGE_INVALID))
+
+            val ok = totpService.verifyForLogin(pending.uuid.toString(), req.code)
+            if (!ok) {
+                return@post call.respond(HttpStatusCode.Unauthorized,
+                    apiError("Invalid TOTP code", AuthErrors.AUTH_TOTP_INVALID))
+            }
+            // Consume only on success so a typo doesn't invalidate the pending entry.
+            pendingTotpStore.consume(req.challengeId)
+
+            val session = sessionService.issue(
+                uuid = pending.uuid,
+                name = pending.name,
+                permissions = pending.permissions,
+                ip = pending.ip,
+                userAgent = pending.userAgent,
+                loginMethod = pending.loginMethod
+            )
+            call.respond(TotpVerifyResponse(
+                token = session.rawToken,
+                expiresAt = session.principal.expiresAt,
+                user = UserInfo(
+                    uuid = pending.uuid.toString(),
+                    name = pending.name,
+                    permissions = pending.permissions.asSet().toList(),
+                    isAdmin = pending.permissions.has(PermissionSet.ADMIN_NODE),
+                    totpEnabled = true
+                )
             ))
         }
 
@@ -375,13 +465,13 @@ fun Route.authRoutes(
                 name = principal.name,
                 permissions = principal.permissions.asSet().toList(),
                 isAdmin = principal.permissions.has(PermissionSet.ADMIN_NODE),
-                totpEnabled = false  // Phase 4
+                totpEnabled = totpService.isEnabled(principal.uuid.toString())
             ))
         }
     }
 }
 
-private fun extractBearerToken(call: io.ktor.server.application.ApplicationCall): String? {
+internal fun extractBearerToken(call: io.ktor.server.application.ApplicationCall): String? {
     val header = call.request.headers["Authorization"] ?: return null
     if (!header.startsWith("Bearer ", ignoreCase = true)) return null
     return header.substring(7).trim().takeIf { it.isNotEmpty() }
