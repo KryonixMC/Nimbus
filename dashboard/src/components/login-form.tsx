@@ -510,6 +510,21 @@ export function LoginForm({
                 <MethodCard
                   title="Passkey"
                   description="Sign in with Touch ID, Windows Hello, or a security key."
+                  icon={
+                    /* Custom head from minecraft-heads.com #43871 (Keypad).
+                       Same pattern as the API-token card: resolve the
+                       textures.minecraft.net hash once and render via
+                       mc-heads.net. */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src="https://mc-heads.net/avatar/7e1959dd4a10841dbf5e02749a2f5b09cc47874ec182fc544302decb6232947c/64"
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="rounded-sm transition-transform duration-200 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                  }
                   onClick={() => void handlePasskeyLogin()}
                 />
               )}
