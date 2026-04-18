@@ -348,6 +348,11 @@ export function LoginForm({
               width={64}
               height={64}
               priority
+              // Skip Next's image optimizer: the source PNG already has
+              // very few distinct colours (~227), re-encoding it at q=75
+              // adds visible fuzz on the logo's flat-colour edges.
+              unoptimized
+              quality={100}
               className="h-16 w-16"
             />
           </div>
