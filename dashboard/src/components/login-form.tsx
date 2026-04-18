@@ -405,7 +405,7 @@ export function LoginForm({
                 icon={
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src="https://mc-heads.net/avatar/MHF_Steve/64"
+                    src="https://mc-heads.net/avatar/MHF_Alex/64"
                     alt=""
                     width={40}
                     height={40}
@@ -419,9 +419,13 @@ export function LoginForm({
                 title="API Token"
                 description="Use a long-lived controller token (admin-only)."
                 icon={
+                  /* Custom head from minecraft-heads.com #120843 (Command Block).
+                     Rendered via mc-heads.net using the textures.minecraft.net
+                     hash — MHF_CommandBlock renders as a plain head on mc-heads,
+                     so we go through the real custom-head texture instead. */
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src="https://mc-heads.net/avatar/MHF_CommandBlock/64"
+                    src="https://mc-heads.net/avatar/eb6cee8fda7ef0b3ae0eb0579d5676ce36af7efc574d88728f3894f6b166538/64"
                     alt=""
                     width={40}
                     height={40}
