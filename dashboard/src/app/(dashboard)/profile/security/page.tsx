@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,18 +129,16 @@ export default function ProfileSecurityPage() {
 
   if (state.kind === "api-token") {
     return (
-      <PageShell title="Security" description="Two-factor authentication.">
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            Profile features are only available for Minecraft-account sessions.
-            Log in with{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-              /dashboard login
-            </code>{" "}
-            on a Nimbus server to access 2FA.
-          </CardContent>
-        </Card>
-      </PageShell>
+      <Card>
+        <CardContent className="py-6 text-sm text-muted-foreground">
+          Profile features are only available for Minecraft-account sessions.
+          Log in with{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+            /dashboard login
+          </code>{" "}
+          on a Nimbus server to access 2FA.
+        </CardContent>
+      </Card>
     );
   }
 
@@ -472,10 +469,7 @@ export default function ProfileSecurityPage() {
   };
 
   return (
-    <PageShell
-      title="Security"
-      description="Two-factor authentication and active sessions."
-    >
+    <>
       <div className="flex flex-col gap-4">
         {renderTotpCard()}
         {renderSessionsCard()}
@@ -631,6 +625,6 @@ export default function ProfileSecurityPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </>
   );
 }

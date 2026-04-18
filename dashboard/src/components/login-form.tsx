@@ -11,26 +11,26 @@ import {
   CardDescription,
   CardHeader,
 } from "@/components/ui/card";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   setApiTokenCredentials,
   setUserSessionCredentials,
   type UserInfo,
 } from "@/lib/api";
 import { buildControllerUrl, controllerFetch } from "@/lib/controller-url";
+import { ArrowLeft } from "@/lib/icons";
 
-type McMode = "code" | "magic";
+type Screen =
+  | "connect"
+  | "method"
+  | "mc-method"
+  | "code"
+  | "magic-link"
+  | "api-token"
+  | "totp";
 
-type LoginStep =
-  | { kind: "initial" }
-  | { kind: "totp"; challengeId: string };
+type McMethod = "code" | "magic-link";
 
 interface ConsumeChallengeResponse {
   token?: string;
@@ -52,27 +52,28 @@ interface ApiErrorBody {
   error?: string;
 }
 
-/**
- * Extract a friendly error message from a JSON error body returned by the
- * controller. Falls back to HTTP status text when the server returned no
- * message (e.g. a CORS preflight rejection).
- */
 async function readError(res: Response, fallback: string): Promise<string> {
   const body: ApiErrorBody = await res.json().catch(() => ({}));
   return body.message || body.error || `${fallback} (${res.status})`;
 }
 
+function friendlyNetworkError(err: unknown): string {
+  const isNetworkError =
+    err instanceof TypeError &&
+    (err.message === "Failed to fetch" ||
+      err.message.includes("NetworkError"));
+  return isNetworkError
+    ? "Could not reach the Nimbus controller. Check that the address is correct, the controller is running, and the API port is open."
+    : "Could not connect to Nimbus controller";
+}
+
 /**
- * Renders a dashboard-hosted, controller-agnostic login flow.
+ * Step-based login flow. Only one screen is rendered at a time; the screen
+ * state machine acts as implicit routing without touching Next's router.
  *
- * Two top-level tabs:
- *   - Minecraft Account — either an in-game `/dashboard login` code or a
- *     "magic link" delivered via in-game chat.
- *   - API Token — the legacy long-lived controller token (admin-only).
- *
- * When the user has enabled TOTP, consuming a challenge returns
- * `totpRequired: true` and the form swaps to a single-input TOTP step
- * bound to the returned `challengeId`.
+ * Flow:
+ *   connect → method → {mc-method → {code|magic-link} | api-token}
+ *   code|magic-link → (optional) totp
  */
 export function LoginForm({
   className,
@@ -80,30 +81,65 @@ export function LoginForm({
 }: React.ComponentProps<"div">) {
   const router = useRouter();
 
+  const [screen, setScreen] = useState<Screen>("connect");
   const [host, setHost] = useState("");
+  const [resolvedUrl, setResolvedUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<LoginStep>({ kind: "initial" });
 
-  // API-token tab state
+  // API-token screen state
   const [apiToken, setApiToken] = useState("");
 
-  // Minecraft tab state
-  const [mcMode, setMcMode] = useState<McMode>("code");
+  // Code screen state
   const [mcCode, setMcCode] = useState("");
+
+  // Magic-link screen state
   const [mcName, setMcName] = useState("");
   const [linkSent, setLinkSent] = useState(false);
   const [linkTtl, setLinkTtl] = useState(0);
   const linkTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // TOTP step state
+  // TOTP state
   const [totpCode, setTotpCode] = useState("");
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [lastMcMethod, setLastMcMethod] = useState<McMethod>("code");
 
   useEffect(() => {
     return () => {
       if (linkTimer.current) clearInterval(linkTimer.current);
     };
   }, []);
+
+  function go(next: Screen) {
+    setError("");
+    setScreen(next);
+  }
+
+  function back() {
+    setError("");
+    switch (screen) {
+      case "method":
+        setScreen("connect");
+        break;
+      case "mc-method":
+        setScreen("method");
+        break;
+      case "code":
+        setScreen("mc-method");
+        break;
+      case "magic-link":
+        setScreen("mc-method");
+        break;
+      case "api-token":
+        setScreen("method");
+        break;
+      case "totp":
+        setScreen(lastMcMethod === "magic-link" ? "magic-link" : "code");
+        break;
+      default:
+        break;
+    }
+  }
 
   function startLinkCountdown(ttlSeconds: number) {
     setLinkTtl(ttlSeconds);
@@ -120,365 +156,598 @@ export function LoginForm({
     }, 1000);
   }
 
-  function resetToInitial() {
-    setStep({ kind: "initial" });
-    setTotpCode("");
-  }
+  // ---- actions ---------------------------------------------------------
 
-  /**
-   * Finalize a successful auth exchange: persist the session token and
-   * navigate into the dashboard. The caller guarantees `token` is set.
-   */
-  function finalizeUserSession(url: string, token: string) {
-    setUserSessionCredentials(url, token);
-    router.push("/");
-  }
-
-  async function handleApiTokenSubmit(url: string) {
-    const res = await controllerFetch(url, "/api/status", {
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
-    if (res.status === 401) {
-      setError("Invalid API token");
-      return;
-    }
-    if (!res.ok) {
-      setError(`Connection failed (${res.status})`);
-      return;
-    }
-    setApiTokenCredentials(url, apiToken);
-    router.push("/");
-  }
-
-  async function handleConsumeChallenge(url: string, challenge: string) {
-    const res = await controllerFetch(url, "/api/auth/consume-challenge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge }),
-    });
-
-    if (!res.ok) {
-      setError(await readError(res, "Login failed"));
-      return;
-    }
-
-    const body: ConsumeChallengeResponse = await res.json();
-
-    if (body.totpRequired && body.challengeId) {
-      setStep({ kind: "totp", challengeId: body.challengeId });
-      return;
-    }
-
-    if (body.token) {
-      finalizeUserSession(url, body.token);
-      return;
-    }
-
-    setError("Unexpected response from controller");
-  }
-
-  async function handleSendMagicLink(url: string) {
-    const res = await controllerFetch(url, "/api/auth/deliver-magic-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: mcName.trim() }),
-    });
-
-    if (res.status === 404) {
-      setError("That player isn't online right now.");
-      return;
-    }
-    if (res.status === 403) {
-      setError("Dashboard login is disabled on this controller.");
-      return;
-    }
-    if (!res.ok) {
-      setError(await readError(res, "Could not send magic link"));
-      return;
-    }
-
-    const body = await res.json().catch(() => ({} as { ttlSeconds?: number }));
-    const ttl = typeof body.ttlSeconds === "number" ? body.ttlSeconds : 60;
-    setLinkSent(true);
-    startLinkCountdown(ttl);
-  }
-
-  async function handleTotpSubmit(url: string, challengeId: string) {
-    const res = await controllerFetch(url, "/api/auth/totp-verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challengeId, code: totpCode.trim() }),
-    });
-
-    if (!res.ok) {
-      setError(await readError(res, "Invalid TOTP code"));
-      return;
-    }
-
-    const body: TotpVerifyResponse = await res.json();
-    finalizeUserSession(url, body.token);
-  }
-
-  async function handleSubmit(e: React.FormEvent, activeTab: string) {
+  async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
       const url = buildControllerUrl(host);
-
-      if (step.kind === "totp") {
-        await handleTotpSubmit(url, step.challengeId);
+      const res = await controllerFetch(url, "/api/status");
+      // /api/status requires auth — any response (incl. 401) proves the
+      // controller is reachable. Treat a non-5xx/non-network result as OK.
+      if (res.status >= 500) {
+        setError(`Controller error (${res.status}). Try again.`);
         return;
       }
-
-      if (activeTab === "api-token") {
-        await handleApiTokenSubmit(url);
-        return;
-      }
-
-      if (mcMode === "code") {
-        await handleConsumeChallenge(url, mcCode.trim());
-      } else {
-        if (linkSent) return; // countdown blocks resend
-        await handleSendMagicLink(url);
-      }
+      setResolvedUrl(url);
+      go("method");
     } catch (err) {
-      const isNetworkError =
-        err instanceof TypeError &&
-        (err.message === "Failed to fetch" ||
-          err.message.includes("NetworkError"));
-      if (isNetworkError) {
-        setError(
-          "Could not reach the Nimbus controller. Check that the address is correct, the controller is running, and the API port is open."
-        );
-      } else {
-        setError("Could not connect to Nimbus controller");
-      }
+      setError(friendlyNetworkError(err));
     } finally {
       setLoading(false);
     }
   }
 
-  const [activeTab, setActiveTab] = useState<string>("minecraft");
+  async function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await controllerFetch(
+        resolvedUrl,
+        "/api/auth/consume-challenge",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ challenge: mcCode.trim() }),
+        }
+      );
+      if (!res.ok) {
+        setError(await readError(res, "Login failed"));
+        return;
+      }
+      const body: ConsumeChallengeResponse = await res.json();
+      if (body.totpRequired && body.challengeId) {
+        setChallengeId(body.challengeId);
+        setLastMcMethod("code");
+        setTotpCode("");
+        go("totp");
+        return;
+      }
+      if (body.token) {
+        setUserSessionCredentials(resolvedUrl, body.token);
+        router.push("/");
+        return;
+      }
+      setError("Unexpected response from controller");
+    } catch (err) {
+      setError(friendlyNetworkError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSendMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (linkSent) return;
+    setError("");
+    setLoading(true);
+    try {
+      const res = await controllerFetch(
+        resolvedUrl,
+        "/api/auth/deliver-magic-link",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: mcName.trim() }),
+        }
+      );
+      if (res.status === 404) {
+        setError("You need to be online on a Nimbus server first.");
+        return;
+      }
+      if (res.status === 403) {
+        setError("Magic link login is disabled on this network.");
+        return;
+      }
+      if (!res.ok) {
+        setError(await readError(res, "Could not send magic link"));
+        return;
+      }
+      const body = await res.json().catch(() => ({} as { ttlSeconds?: number }));
+      const ttl = typeof body.ttlSeconds === "number" ? body.ttlSeconds : 60;
+      setLastMcMethod("magic-link");
+      setLinkSent(true);
+      startLinkCountdown(ttl);
+    } catch (err) {
+      setError(friendlyNetworkError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleApiTokenSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await controllerFetch(resolvedUrl, "/api/status", {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (res.status === 401) {
+        setError("Invalid API token");
+        return;
+      }
+      if (!res.ok) {
+        setError(`Connection failed (${res.status})`);
+        return;
+      }
+      setApiTokenCredentials(resolvedUrl, apiToken);
+      router.push("/");
+    } catch (err) {
+      setError(friendlyNetworkError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTotpSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!challengeId) return;
+    setError("");
+    setLoading(true);
+    try {
+      const res = await controllerFetch(
+        resolvedUrl,
+        "/api/auth/totp-verify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ challengeId, code: totpCode.trim() }),
+        }
+      );
+      if (!res.ok) {
+        setError(await readError(res, "Invalid TOTP code"));
+        return;
+      }
+      const body: TotpVerifyResponse = await res.json();
+      setUserSessionCredentials(resolvedUrl, body.token);
+      router.push("/");
+    } catch (err) {
+      setError(friendlyNetworkError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ---- rendering -------------------------------------------------------
+
+  const animated =
+    "animate-in fade-in-0 duration-200";
+
+  const showBack = screen !== "connect";
+
+  const description =
+    screen === "connect"
+      ? "Connect to your Nimbus controller"
+      : screen === "totp"
+        ? "Two-factor authentication"
+        : undefined;
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
+      <Card className="relative">
+        {showBack && (
+          <button
+            type="button"
+            onClick={back}
+            aria-label="Back"
+            className="absolute left-3 top-3 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+        )}
+
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-2">
+          <div className="mb-2 flex justify-center">
             <Image
-              src="/banner.svg"
+              src="/icon.png"
               alt="Nimbus"
-              width={320}
-              height={88}
+              width={64}
+              height={64}
               priority
-              className="h-auto w-[320px]"
+              className="h-16 w-16"
             />
           </div>
-          <CardDescription>
-            {step.kind === "totp"
-              ? "Two-factor authentication"
-              : "Connect to your Nimbus controller"}
-          </CardDescription>
+          {description && <CardDescription>{description}</CardDescription>}
+          {screen !== "connect" && resolvedUrl && (
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              Connected to{" "}
+              <span className="font-mono">{resolvedUrl}</span>
+            </p>
+          )}
         </CardHeader>
-        <CardContent>
-          <form onSubmit={(e) => handleSubmit(e, activeTab)}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="host">Controller Address</FieldLabel>
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="IP or hostname (e.g. 192.168.1.100)"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  required
-                  disabled={step.kind === "totp"}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Port defaults to 8080 if not specified
-                </p>
-              </Field>
 
-              {step.kind === "totp" ? (
-                <>
+        <CardContent>
+          {screen === "connect" && (
+            <form onSubmit={handleConnect} className={animated}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="host">Controller Address</FieldLabel>
+                  <Input
+                    id="host"
+                    type="text"
+                    placeholder="IP or hostname (e.g. 192.168.1.100)"
+                    value={host}
+                    onChange={(e) => setHost(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Port defaults to 8080 if not specified
+                  </p>
+                </Field>
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-sm text-[color:var(--severity-err)]"
+                  >
+                    {error}
+                  </p>
+                )}
+                <Field>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Connecting…" : "Continue"}
+                  </Button>
+                </Field>
+              </FieldGroup>
+            </form>
+          )}
+
+          {screen === "method" && (
+            <div className={cn("flex flex-col gap-3", animated)}>
+              <MethodCard
+                title="Minecraft Account"
+                description="Sign in with an in-game code or a magic link."
+                primary
+                icon={<SkinHeadIcon />}
+                onClick={() => go("mc-method")}
+              />
+              <MethodCard
+                title="API Token"
+                description="Use a long-lived controller token (admin-only)."
+                icon={<CoinIcon />}
+                onClick={() => go("api-token")}
+              />
+            </div>
+          )}
+
+          {screen === "mc-method" && (
+            <div className={cn("flex flex-col gap-3", animated)}>
+              <MethodCard
+                title="Login code"
+                description="Type /nimbus dashboard login on any Nimbus server."
+                primary
+                onClick={() => go("code")}
+              />
+              <MethodCard
+                title="Magic link ✨"
+                description="Get a clickable sign-in link in your in-game chat."
+                onClick={() => go("magic-link")}
+              />
+            </div>
+          )}
+
+          {screen === "code" && (
+            <form onSubmit={handleCodeSubmit} className={animated}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="mc-code">Login code</FieldLabel>
+                  <Input
+                    id="mc-code"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={mcCode}
+                    onChange={(e) => setMcCode(e.target.value)}
+                    required
+                    autoComplete="one-time-code"
+                    autoFocus
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Code not working? Make sure you typed{" "}
+                    <code>/nimbus dashboard login</code> in-game.
+                  </p>
+                </Field>
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-sm text-[color:var(--severity-err)]"
+                  >
+                    {error}
+                  </p>
+                )}
+                <Field>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Signing in…" : "Sign in"}
+                  </Button>
+                </Field>
+              </FieldGroup>
+            </form>
+          )}
+
+          {screen === "magic-link" && (
+            <form onSubmit={handleSendMagicLink} className={animated}>
+              <FieldGroup>
+                {!linkSent ? (
                   <Field>
-                    <FieldLabel htmlFor="totp">Authenticator code</FieldLabel>
+                    <FieldLabel htmlFor="mc-name">
+                      Minecraft username
+                    </FieldLabel>
                     <Input
-                      id="totp"
+                      id="mc-name"
                       type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      placeholder="6-digit code or recovery code"
-                      value={totpCode}
-                      onChange={(e) => setTotpCode(e.target.value)}
+                      placeholder="Notch"
+                      value={mcName}
+                      onChange={(e) => setMcName(e.target.value)}
                       required
                       autoFocus
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Enter the code from your authenticator app, or a recovery
-                      code if you&apos;ve lost access.
+                  </Field>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 py-4 text-center">
+                    <p className="text-sm">Check your in-game chat ✨</p>
+                    <p className="text-xs text-muted-foreground">
+                      Link expires in {linkTtl}s
                     </p>
-                  </Field>
-                  {error && <p className="text-sm text-destructive">{error}</p>}
-                  <Field>
-                    <Button type="submit" className="w-full" disabled={loading}>
-                      {loading ? "Verifying..." : "Verify"}
-                    </Button>
-                  </Field>
-                  <Field>
+                  </div>
+                )}
+                {error && (
+                  <div className="flex flex-col gap-2">
+                    <p
+                      role="alert"
+                      className="text-sm text-[color:var(--severity-err)]"
+                    >
+                      {error}
+                    </p>
+                    {error.includes("disabled") && (
+                      <button
+                        type="button"
+                        onClick={() => go("code")}
+                        className="text-left text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                      >
+                        Use code instead
+                      </button>
+                    )}
+                  </div>
+                )}
+                <Field>
+                  {linkSent && linkTtl === 0 ? (
                     <Button
                       type="button"
-                      variant="ghost"
                       className="w-full"
-                      onClick={resetToInitial}
+                      onClick={() => {
+                        setLinkSent(false);
+                        setError("");
+                      }}
                     >
-                      Back
+                      Send another link
                     </Button>
-                  </Field>
-                </>
-              ) : (
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(v) => {
-                    setActiveTab(String(v));
-                    setError("");
-                  }}
-                >
-                  <TabsList className="w-full">
-                    <TabsTrigger value="minecraft">
-                      Minecraft Account
-                    </TabsTrigger>
-                    <TabsTrigger value="api-token">API Token</TabsTrigger>
-                  </TabsList>
+                  ) : (
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={loading || linkSent}
+                    >
+                      {loading
+                        ? "Sending…"
+                        : linkSent
+                          ? `Link sent (${linkTtl}s)`
+                          : "Send link"}
+                    </Button>
+                  )}
+                </Field>
+              </FieldGroup>
+            </form>
+          )}
 
-                  <TabsContent value="minecraft" className="mt-4">
-                    <FieldGroup>
-                      <Field>
-                        <ToggleGroup
-                          type="single"
-                          value={mcMode}
-                          onValueChange={(v) => {
-                            if (v) setMcMode(v as McMode);
-                          }}
-                          className="w-full"
-                        >
-                          <ToggleGroupItem
-                            value="code"
-                            className="flex-1"
-                            aria-label="Login code"
-                          >
-                            Login Code
-                          </ToggleGroupItem>
-                          <ToggleGroupItem
-                            value="magic"
-                            className="flex-1"
-                            aria-label="Magic link"
-                          >
-                            Magic Link
-                          </ToggleGroupItem>
-                        </ToggleGroup>
-                      </Field>
+          {screen === "api-token" && (
+            <form onSubmit={handleApiTokenSubmit} className={animated}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="token">API Token</FieldLabel>
+                  <Input
+                    id="token"
+                    type="password"
+                    placeholder="Enter your API token"
+                    value={apiToken}
+                    onChange={(e) => setApiToken(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </Field>
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-sm text-[color:var(--severity-err)]"
+                  >
+                    {error}
+                  </p>
+                )}
+                <Field>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Connecting…" : "Sign in"}
+                  </Button>
+                </Field>
+              </FieldGroup>
+            </form>
+          )}
 
-                      {mcMode === "code" ? (
-                        <Field>
-                          <FieldLabel htmlFor="mc-code">Login code</FieldLabel>
-                          <Input
-                            id="mc-code"
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={6}
-                            placeholder="123456"
-                            value={mcCode}
-                            onChange={(e) => setMcCode(e.target.value)}
-                            required
-                            autoComplete="one-time-code"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Type <code>/dashboard login</code> on any Nimbus
-                            server to get your code.
-                          </p>
-                        </Field>
-                      ) : (
-                        <Field>
-                          <FieldLabel htmlFor="mc-name">
-                            Minecraft username
-                          </FieldLabel>
-                          <Input
-                            id="mc-name"
-                            type="text"
-                            placeholder="Notch"
-                            value={mcName}
-                            onChange={(e) => setMcName(e.target.value)}
-                            required
-                            disabled={linkSent}
-                          />
-                          {linkSent && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Check your in-game chat ✨ (expires in {linkTtl}s)
-                            </p>
-                          )}
-                        </Field>
-                      )}
-
-                      {error && (
-                        <p className="text-sm text-destructive">{error}</p>
-                      )}
-
-                      <Field>
-                        <Button
-                          type="submit"
-                          className="w-full"
-                          disabled={
-                            loading || (mcMode === "magic" && linkSent)
-                          }
-                        >
-                          {loading
-                            ? "Working..."
-                            : mcMode === "code"
-                              ? "Sign in"
-                              : linkSent
-                                ? `Link sent (${linkTtl}s)`
-                                : "Send link"}
-                        </Button>
-                      </Field>
-                    </FieldGroup>
-                  </TabsContent>
-
-                  <TabsContent value="api-token" className="mt-4">
-                    <FieldGroup>
-                      <Field>
-                        <FieldLabel htmlFor="token">API Token</FieldLabel>
-                        <Input
-                          id="token"
-                          type="password"
-                          placeholder="Enter your API token"
-                          value={apiToken}
-                          onChange={(e) => setApiToken(e.target.value)}
-                          required
-                        />
-                      </Field>
-                      {error && (
-                        <p className="text-sm text-destructive">{error}</p>
-                      )}
-                      <Field>
-                        <Button
-                          type="submit"
-                          className="w-full"
-                          disabled={loading}
-                        >
-                          {loading ? "Connecting..." : "Connect"}
-                        </Button>
-                      </Field>
-                    </FieldGroup>
-                  </TabsContent>
-                </Tabs>
-              )}
-            </FieldGroup>
-          </form>
+          {screen === "totp" && (
+            <form onSubmit={handleTotpSubmit} className={animated}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="totp">Authenticator code</FieldLabel>
+                  <Input
+                    id="totp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="6-digit code or recovery code"
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Lost your device? Use a recovery code.
+                  </p>
+                </Field>
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-sm text-[color:var(--severity-err)]"
+                  >
+                    {error}
+                  </p>
+                )}
+                <Field>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Verifying…" : "Verify"}
+                  </Button>
+                </Field>
+              </FieldGroup>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MethodCard({
+  title,
+  description,
+  primary,
+  onClick,
+  icon,
+}: {
+  title: string;
+  description: string;
+  primary?: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors",
+        primary
+          ? "border-primary/40 bg-primary/5 hover:border-primary hover:bg-primary/10"
+          : "border-border hover:bg-muted"
+      )}
+    >
+      {icon && <div className="shrink-0">{icon}</div>}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-medium">{title}</span>
+        <span className="text-xs text-muted-foreground">{description}</span>
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Classic 8×8 Steve face — pixel-art Minecraft head. shape-rendering keeps
+ * the rects crisp at any zoom so it stays pixel-perfect on HiDPI screens.
+ */
+function SkinHeadIcon({ className }: { className?: string }) {
+  // Palette — canonical Steve colours, toned down a touch for light/dark themes.
+  const H = "#2C1A0A"; // hair
+  const S = "#C08D6A"; // skin
+  const SS = "#9B6B4D"; // skin shadow (cheek edge)
+  const W = "#F5F5F5"; // eye white
+  const I = "#3B6CD1"; // iris
+  const M = "#6B3F2F"; // mouth
+  // 8 rows × 8 cols. '.' = skin fill default.
+  const rows: string[] = [
+    "HHHHHHHH",
+    "HHHHHHHH",
+    "HHHHHHHH",
+    "HSSSSSSH",
+    "SWISSWIS",
+    "SSSSSSSS",
+    "sMMMMMMs", // mouth row with shadow edges
+    "sSSSSSSs",
+  ];
+  const color: Record<string, string> = {
+    H, S, s: SS, W, I, M,
+  };
+  return (
+    <svg
+      viewBox="0 0 8 8"
+      width={40}
+      height={40}
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+      className={className}
+    >
+      {rows.flatMap((row, y) =>
+        row.split("").map((ch, x) => (
+          <rect
+            key={`${x}-${y}`}
+            x={x}
+            y={y}
+            width={1}
+            height={1}
+            fill={color[ch] ?? S}
+          />
+        ))
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Pixel-art gold coin with a small "N" for Nimbus. 10×10 grid, same crisp
+ * edges as the skin head so the two visually rhyme.
+ */
+function CoinIcon({ className }: { className?: string }) {
+  const O = "#7A5A10"; // outline
+  const G = "#F0B820"; // gold fill
+  const D = "#B4860F"; // gold shadow
+  const L = "#FFF1A6"; // highlight
+  // 10 rows × 10 cols. '.' = transparent.
+  const rows: string[] = [
+    "...OOOO...",
+    "..OGGGGO..",
+    ".OGLGGDGO.", // top highlight + right-side shadow start
+    ".OGGGDDGO.",
+    "OGGOGGODGO",
+    "OGGGOGGODO",
+    ".OGGOGGGO.",
+    ".OGGGGDGO.",
+    "..OGGDGO..",
+    "...OOOO...",
+  ];
+  const color: Record<string, string> = { O, G, D, L };
+  return (
+    <svg
+      viewBox="0 0 10 10"
+      width={40}
+      height={40}
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+      className={className}
+    >
+      {rows.flatMap((row, y) =>
+        row.split("").map((ch, x) =>
+          ch === "." ? null : (
+            <rect
+              key={`${x}-${y}`}
+              x={x}
+              y={y}
+              width={1}
+              height={1}
+              fill={color[ch] ?? G}
+            />
+          )
+        )
+      )}
+    </svg>
   );
 }
