@@ -14,6 +14,8 @@ dependencies {
     compileOnly("com.akuleshov7:ktoml-file:0.5.2")
     compileOnly("org.slf4j:slf4j-api:2.0.16")
 
+    testImplementation(project(":nimbus-core"))
+    testImplementation(project(":nimbus-module-api"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("io.mockk:mockk:1.13.14")
