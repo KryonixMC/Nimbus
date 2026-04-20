@@ -397,6 +397,10 @@ fun nimbusMain() = runBlocking {
     )
     serviceManager.warmPoolManager = warmPoolManager
 
+    // Prometheus counters: subscribe to the event bus for crash/scale counts.
+    // Values reset on controller restart — Prometheus `rate()` handles that.
+    val prometheusCounters = dev.nimbuspowered.nimbus.metrics.PrometheusCounters(eventBus, scope)
+
     // Scaling engine is created here but started AFTER startMinimumInstances()
     // to prevent it from racing the phased startup (proxy must be READY before backends).
     var scalingJob: kotlinx.coroutines.Job? = null
@@ -438,7 +442,9 @@ fun nimbusMain() = runBlocking {
         softwareResolver = softwareResolver,
         dedicatedServiceManager = dedicatedServiceManager,
         dedicatedDir = dedicatedDir,
-        stateSyncManager = stateSyncManager
+        stateSyncManager = stateSyncManager,
+        warmPoolManager = warmPoolManager,
+        prometheusCounters = prometheusCounters
     )
 
     // Register shutdown hook for external signals (SIGTERM, SIGINT, terminal close)
