@@ -3,6 +3,12 @@ package dev.nimbuspowered.nimbus.api
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
+/**
+ * Compatibility check for the deprecated [ApiErrors] facade. Ensures that the
+ * wire codes behind the legacy `const val` entries stay stable until 0.14.0,
+ * when the facade is removed.
+ */
+@Suppress("DEPRECATION")
 class ApiErrorsTest {
 
     @Test
@@ -14,8 +20,7 @@ class ApiErrorsTest {
     }
 
     @Test
-    fun `error codes are stable strings`() {
-        // These are public API — tests act as a change-detector for renames.
+    fun `legacy error codes are stable strings`() {
         assertEquals("AUTH_FAILED", ApiErrors.AUTH_FAILED)
         assertEquals("UNAUTHORIZED", ApiErrors.UNAUTHORIZED)
         assertEquals("NOT_FOUND", ApiErrors.NOT_FOUND)
@@ -26,5 +31,12 @@ class ApiErrorsTest {
         assertEquals("PATH_TRAVERSAL", ApiErrors.PATH_TRAVERSAL)
         assertEquals("PUNISHMENT_NOT_FOUND", ApiErrors.PUNISHMENT_NOT_FOUND)
         assertEquals("RESOURCE_PACK_NOT_FOUND", ApiErrors.RESOURCE_PACK_NOT_FOUND)
+    }
+
+    @Test
+    fun `INVALID_INPUT legacy constant redirects to VALIDATION_FAILED wire code`() {
+        // Deliberate silent correction — the two were semantic duplicates. See
+        // ApiErrors.kt KDoc for rationale. Locked here so it can't be reverted accidentally.
+        assertEquals("VALIDATION_FAILED", ApiErrors.INVALID_INPUT)
     }
 }
