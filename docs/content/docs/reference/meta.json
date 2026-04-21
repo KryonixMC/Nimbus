@@ -4,6 +4,7 @@
   "description": "REST API & WebSocket",
   "pages": [
     "api",
+    "api-stability",
     "websocket",
     "events",
     "permissions"
