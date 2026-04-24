@@ -19,6 +19,7 @@ class StressCommand(
     override val name = "stress"
     override val description = "Simulate player load for stress testing"
     override val usage = "stress [start <players> [group] [--ramp <seconds>] | stop | ramp <players> [--duration <seconds>] | status]"
+    override val permission = "nimbus.cloud.stress"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.isEmpty() || args[0].lowercase() == "status") {

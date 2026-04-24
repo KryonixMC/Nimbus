@@ -15,6 +15,7 @@ class PlayersCommand(
     override val name = "players"
     override val description = "List all connected players across services"
     override val usage = "players [service]"
+    override val permission = "nimbus.cloud.players"
 
     private data class PlayerEntry(val playerName: String, val serviceName: String, val serverGroup: String)
 

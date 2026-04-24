@@ -15,6 +15,7 @@ class StopCommand(
     override val name = "stop"
     override val description = "Stop a running service"
     override val usage = "stop <service>"
+    override val permission = "nimbus.cloud.stop"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.isEmpty()) {

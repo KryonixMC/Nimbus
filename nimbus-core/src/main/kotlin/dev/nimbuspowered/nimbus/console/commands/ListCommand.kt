@@ -15,6 +15,7 @@ class ListCommand(
     override val name = "list"
     override val description = "List all running services"
     override val usage = "list [group]"
+    override val permission = "nimbus.cloud.list"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         val services = if (args.isNotEmpty()) {

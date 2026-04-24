@@ -15,6 +15,7 @@ class StartCommand(
     override val name = "start"
     override val description = "Start a new service instance for a group"
     override val usage = "start <group>"
+    override val permission = "nimbus.cloud.start"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.isEmpty()) {

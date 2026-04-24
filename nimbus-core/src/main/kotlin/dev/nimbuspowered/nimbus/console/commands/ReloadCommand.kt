@@ -25,6 +25,7 @@ class ReloadCommand(
     override val name = "reload"
     override val description = "Hot-reload group and proxy configuration files (database/API config changes require restart)"
     override val usage = "reload"
+    override val permission = "nimbus.cloud.reload"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         output.info("Reloading configurations...")

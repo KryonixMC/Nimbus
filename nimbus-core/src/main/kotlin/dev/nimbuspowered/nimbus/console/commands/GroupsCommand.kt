@@ -15,6 +15,7 @@ class GroupsCommand(
     override val name = "groups"
     override val description = "List all configured groups"
     override val usage = "groups"
+    override val permission = "nimbus.cloud.groups"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         val groups = groupManager.getAllGroups()

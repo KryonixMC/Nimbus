@@ -22,6 +22,7 @@ class StatusCommand(
     override val name = "status"
     override val description = "Show full network status overview"
     override val usage = "status"
+    override val permission = "nimbus.cloud.status"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         val allServices = registry.getAll()

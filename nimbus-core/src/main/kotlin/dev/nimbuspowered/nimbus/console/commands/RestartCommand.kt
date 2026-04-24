@@ -15,6 +15,7 @@ class RestartCommand(
     override val name = "restart"
     override val description = "Restart a running service"
     override val usage = "restart <service>"
+    override val permission = "nimbus.cloud.restart"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.isEmpty()) {

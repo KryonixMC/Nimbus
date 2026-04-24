@@ -15,6 +15,7 @@ class ExecCommand(
     override val name = "exec"
     override val description = "Execute a command on a service"
     override val usage = "exec <service> <command...>"
+    override val permission = "nimbus.cloud.exec"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.size < 2) {

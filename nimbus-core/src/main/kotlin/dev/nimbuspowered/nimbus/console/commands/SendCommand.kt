@@ -19,6 +19,7 @@ class SendCommand(
     override val name = "send"
     override val description = "Transfer a player to another service"
     override val usage = "send <player> <service>"
+    override val permission = "nimbus.cloud.send"
 
     override suspend fun execute(args: List<String>, output: CommandOutput): Boolean {
         if (args.size != 2) {
