@@ -1,6 +1,7 @@
 package dev.nimbuspowered.nimbus.module.storage
 
 import dev.nimbuspowered.nimbus.NimbusVersion
+import dev.nimbuspowered.nimbus.module.api.AuthLevel
 import dev.nimbuspowered.nimbus.module.api.ModuleContext
 import dev.nimbuspowered.nimbus.module.api.NimbusModule
 import dev.nimbuspowered.nimbus.module.storage.driver.S3StorageDriver
@@ -36,6 +37,9 @@ class StorageModule : NimbusModule {
         } else {
             logger.info("Storage module loaded (disabled — set enabled = true in storage.toml to activate)")
         }
+
+        context.registerCommand(StorageCommand(syncManager))
+        context.registerRoutes({ storageRoutes(configManager.config, syncManager) }, AuthLevel.ADMIN)
     }
 
     override suspend fun enable() {}
