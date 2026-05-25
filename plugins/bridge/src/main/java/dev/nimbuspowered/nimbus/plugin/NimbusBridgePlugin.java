@@ -67,7 +67,13 @@ public class NimbusBridgePlugin {
         registerBridge(commandManager);
 
         // Register event listeners (maintenance handler may be null if no bridge config)
-        server.getEventManager().register(this, new ConnectionListener(server, logger, () -> maintenanceHandler, this::findModdedServerForClient));
+        server.getEventManager().register(this, new ConnectionListener(
+            server, logger, () -> maintenanceHandler,
+            this::findModdedServerForClient,
+            () -> moddedGroups.stream()
+                .map(g -> g.name() + " (" + g.software() + " MC " + g.version() + ")")
+                .collect(Collectors.joining(", "))
+        ));
 
         // Unsubscribe players from event feed on disconnect
         server.getEventManager().register(this, new Object() {
@@ -471,23 +477,33 @@ public class NimbusBridgePlugin {
         Optional<RegisteredServer> find(String connType, int protocol, Set<String> clientModIds);
     }
 
+    /** Human-readable summary of the modded servers Bridge currently knows about. */
+    @FunctionalInterface
+    private interface ModdedServerListing {
+        /** Returns e.g. "ModdedTogether (NEOFORGE MC 1.21.1)" lines joined with ", ", or empty if no modded groups. */
+        String describe();
+    }
+
     private static class ConnectionListener {
 
         private final ProxyServer server;
         private final Logger logger;
         private final java.util.function.Supplier<MaintenanceHandler> maintenanceSupplier;
         private final ModdedServerFinder moddedServerFinder;
+        private final ModdedServerListing moddedServerListing;
         private final net.kyori.adventure.text.minimessage.MiniMessage miniMessage = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage();
         private final boolean loadBalancerEnabled;
         private final int servicePort;
 
         ConnectionListener(ProxyServer server, Logger logger,
                            java.util.function.Supplier<MaintenanceHandler> maintenanceSupplier,
-                           ModdedServerFinder moddedServerFinder) {
+                           ModdedServerFinder moddedServerFinder,
+                           ModdedServerListing moddedServerListing) {
             this.server = server;
             this.logger = logger;
             this.maintenanceSupplier = maintenanceSupplier;
             this.moddedServerFinder = moddedServerFinder;
+            this.moddedServerListing = moddedServerListing;
             this.loadBalancerEnabled = Boolean.getBoolean("nimbus.loadbalancer.enabled");
             this.servicePort = Integer.getInteger("nimbus.service.port", -1);
         }
@@ -573,14 +589,10 @@ public class NimbusBridgePlugin {
          * + modloader they actually need to install.
          */
         private Component buildModdedNoMatchKick(String connType, int protocol) {
-            String available;
-            if (moddedGroups.isEmpty()) {
-                available = "no modded servers are configured on this network.";
-            } else {
-                available = "available modded servers: " + moddedGroups.stream()
-                    .map(g -> g.name() + " (" + g.software() + " MC " + g.version() + ")")
-                    .collect(Collectors.joining(", "));
-            }
+            String listed = moddedServerListing.describe();
+            String available = listed.isEmpty()
+                ? "no modded servers are configured on this network."
+                : "available modded servers: " + listed;
             return Component.text()
                 .append(Component.text("No compatible modded server for your client.\n", NamedTextColor.RED))
                 .append(Component.text("Your client: " + connType + " (protocol " + protocol + ")\n", NamedTextColor.GRAY))
